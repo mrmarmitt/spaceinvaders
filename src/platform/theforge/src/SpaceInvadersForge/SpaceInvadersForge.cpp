@@ -1,5 +1,6 @@
-// SpaceInvadersForge — degrau 0 da PoC sprites (.ai/task/01-poc-sprites.md):
-// o casco da plataforma The-Forge reinstanciado fora do repo do 8puzzle.
+// SpaceInvadersForge — degraus 0 e 1 da PoC sprites (.ai/task/01-poc-sprites.md):
+// o casco da plataforma The-Forge (degrau 0) + o primeiro quad proprio via
+// shader FSL, pipeline e vertex buffer (degrau 1).
 //
 // Mesma receita do 8PuzzleForge.cpp: o IApp hospeda o EngineManager da
 // cengine em MODO HOSPEDADO (cengine 0.4.0, task 15) — sem window manager
@@ -58,6 +59,22 @@ Semaphore* pImageAcquiredSemaphore = NULL;
 
 uint32_t gFrameIndex = 0;
 uint32_t gFontID = 0;
+
+// --- degrau 1: primeiro quad proprio (shader FSL + pipeline + vertex buffer) ---
+
+Shader*   pQuadShader = NULL;
+Pipeline* pQuadPipeline = NULL;
+Buffer*   pQuadVertexBuffer = NULL;
+
+// Vertice do quad: posicao JA em NDC — a projecao ortografica (pixels -> NDC)
+// e aplicada na CPU ao preencher o buffer, o mesmo desenho que o batcher do
+// degrau 3 fara por quadro (e que o fontstash do The-Forge ja faz).
+struct QuadVertex
+{
+    float2 position;
+    float4 color;
+};
+const uint32_t gQuadVertexCount = 6;
 
 std::shared_ptr<cengine::routing::RouterInMemory> gRouter;
 std::unique_ptr<cengine::core::EngineManager>     gEngine;
@@ -133,7 +150,7 @@ public:
         snprintf(nav, sizeof(nav), "ENTER -> %s   |   ESC -> sair", m_nextLabel);
         forgeui::drawTextCentered(nav, height * 0.26f + 136.0f, 22.0f, forgeui::color::kDim);
 
-        forgeui::drawHints("casco The-Forge + cengine hospedada — degrau 0 da PoC sprites");
+        forgeui::drawHints("quad proprio (FSL) sob o texto fontstash — degrau 1 da PoC sprites");
     }
 
     void onExit() override { LOGF(eINFO, "[cengine] onExit: %s (%.1fs, %llu updates)", m_label, m_elapsed, (unsigned long long)m_updates); }
@@ -188,6 +205,16 @@ public:
         INIT_RS_DESC(rootDesc, "default.rootsig", "compute.rootsig");
         initRootSignature(pRenderer, &rootDesc);
 
+        // vertex buffer do quad (estatico; o conteudo e preenchido no Load,
+        // quando as dimensoes da tela sao conhecidas)
+        BufferLoadDesc quadVbDesc = {};
+        quadVbDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+        quadVbDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
+        quadVbDesc.mDesc.mSize = sizeof(QuadVertex) * gQuadVertexCount;
+        quadVbDesc.pData = NULL;
+        quadVbDesc.ppBuffer = &pQuadVertexBuffer;
+        addResource(&quadVbDesc, NULL);
+
         // fontes (mesma fonte dos unit tests; resolvida via PathStatement.txt)
         FontDesc font = {};
         font.pFontPath = "TitilliumText/TitilliumText-Bold.otf";
@@ -237,6 +264,8 @@ public:
 
         exitFontSystem();
 
+        removeResource(pQuadVertexBuffer);
+
         exitGpuCmdRing(pRenderer, &gGraphicsCmdRing);
         exitSemaphore(pRenderer, pImageAcquiredSemaphore);
 
@@ -252,10 +281,29 @@ public:
 
     bool Load(ReloadDesc* pReloadDesc)
     {
+        // Mesma particao de responsabilidades do 01_Transformations: shaders
+        // dependem so do FSL (reload de shader recompila), o pipeline depende
+        // do formato do swapchain, e o conteudo do vertex buffer depende das
+        // dimensoes da tela (projecao ortografica na CPU).
+        if (pReloadDesc->mType & RELOAD_TYPE_SHADER)
+        {
+            addQuadShader();
+        }
+
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
         {
             if (!addSwapChain())
                 return false;
+        }
+
+        if (pReloadDesc->mType & (RELOAD_TYPE_SHADER | RELOAD_TYPE_RENDERTARGET))
+        {
+            addQuadPipeline();
+        }
+
+        if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
+        {
+            updateQuadVertexBuffer();
         }
 
         UserInterfaceLoadDesc uiLoad = {};
@@ -282,9 +330,19 @@ public:
         unloadFontSystem(pReloadDesc->mType);
         unloadUserInterface(pReloadDesc->mType);
 
+        if (pReloadDesc->mType & (RELOAD_TYPE_SHADER | RELOAD_TYPE_RENDERTARGET))
+        {
+            removePipeline(pRenderer, pQuadPipeline);
+        }
+
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
         {
             removeSwapChain(pRenderer, pSwapChain);
+        }
+
+        if (pReloadDesc->mType & RELOAD_TYPE_SHADER)
+        {
+            removeShader(pRenderer, pQuadShader);
         }
     }
 
@@ -334,6 +392,13 @@ public:
         cmdSetViewport(cmd, 0.0f, 0.0f, (float)pRenderTarget->mWidth, (float)pRenderTarget->mHeight, 0.0f, 1.0f);
         cmdSetScissor(cmd, 0, 0, pRenderTarget->mWidth, pRenderTarget->mHeight);
 
+        // degrau 1: o quad proprio desenha ANTES do texto, no mesmo render
+        // pass — o fontstash/UI vem por cima (ordem de draw = camadas em 2D).
+        const uint32_t quadStride = sizeof(QuadVertex);
+        cmdBindPipeline(cmd, pQuadPipeline);
+        cmdBindVertexBuffer(cmd, 1, &pQuadVertexBuffer, &quadStride, NULL);
+        cmdDraw(cmd, gQuadVertexCount, 0);
+
         // a cena atual desenha atraves do alvo publicado no forgeui; o
         // frame() executa o quadro completo da cengine (fases + fixed
         // timestep) e devolve false quando o jogo pediu saida.
@@ -382,6 +447,86 @@ public:
     }
 
     const char* GetName() { return "SpaceInvadersForge"; }
+
+    void addQuadShader()
+    {
+        ShaderLoadDesc quadShader = {};
+        quadShader.mVert.pFileName = "quad.vert";
+        quadShader.mFrag.pFileName = "quad.frag";
+        addShader(pRenderer, &quadShader, &pQuadShader);
+    }
+
+    void addQuadPipeline()
+    {
+        VertexLayout vertexLayout = {};
+        vertexLayout.mBindingCount = 1;
+        vertexLayout.mBindings[0].mStride = sizeof(QuadVertex);
+        vertexLayout.mAttribCount = 2;
+        vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
+        vertexLayout.mAttribs[0].mFormat = TinyImageFormat_R32G32_SFLOAT;
+        vertexLayout.mAttribs[0].mBinding = 0;
+        vertexLayout.mAttribs[0].mLocation = 0;
+        vertexLayout.mAttribs[0].mOffset = 0;
+        vertexLayout.mAttribs[1].mSemantic = SEMANTIC_TEXCOORD0;
+        vertexLayout.mAttribs[1].mFormat = TinyImageFormat_R32G32B32A32_SFLOAT;
+        vertexLayout.mAttribs[1].mBinding = 0;
+        vertexLayout.mAttribs[1].mLocation = 1;
+        vertexLayout.mAttribs[1].mOffset = sizeof(float2);
+
+        RasterizerStateDesc rasterizerStateDesc = {};
+        rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
+
+        PipelineDesc desc = {};
+        desc.mType = PIPELINE_TYPE_GRAPHICS;
+        // Sem recursos proprios (nem cbuffer nem textura): so os static
+        // samplers do root signature default.
+        PIPELINE_LAYOUT_DESC(desc, NULL, NULL, NULL, NULL);
+        GraphicsPipelineDesc& pipelineSettings = desc.mGraphicsDesc;
+        pipelineSettings.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
+        pipelineSettings.mRenderTargetCount = 1;
+        pipelineSettings.pDepthState = NULL; // 2D: sem depth, ordem = ordem de draw
+        pipelineSettings.pColorFormats = &pSwapChain->ppRenderTargets[0]->mFormat;
+        pipelineSettings.mSampleCount = pSwapChain->ppRenderTargets[0]->mSampleCount;
+        pipelineSettings.mSampleQuality = pSwapChain->ppRenderTargets[0]->mSampleQuality;
+        pipelineSettings.pShaderProgram = pQuadShader;
+        pipelineSettings.pVertexLayout = &vertexLayout;
+        pipelineSettings.pRasterizerState = &rasterizerStateDesc;
+        addPipeline(pRenderer, &desc, &pQuadPipeline);
+    }
+
+    // Preenche o quad em coordenadas de PIXEL e converte para NDC — a
+    // "projecao ortografica" do degrau 1, aplicada na CPU. O retangulo tem
+    // tamanho fixo em pixels, entao redimensionar a janela NAO o estica:
+    // prova visivel de que a conversao esta correta.
+    void updateQuadVertexBuffer()
+    {
+        const float width = (float)mSettings.mWidth;
+        const float height = (float)mSettings.mHeight;
+
+        const float quadW = 320.0f;
+        const float quadH = 180.0f;
+        const float left = (width - quadW) * 0.5f;
+        const float top = height * 0.55f;
+
+        auto ndcX = [width](float px) { return px / width * 2.0f - 1.0f; };
+        auto ndcY = [height](float py) { return 1.0f - py / height * 2.0f; };
+
+        const float x0 = ndcX(left), x1 = ndcX(left + quadW);
+        const float y0 = ndcY(top), y1 = ndcY(top + quadH);
+
+        const float4 cTop = { 1.0f, 0.70f, 0.0f, 1.0f };    // ambar (kAccent)
+        const float4 cBottom = { 0.0f, 0.70f, 1.0f, 1.0f }; // ciano (kTitle)
+
+        const QuadVertex vertices[gQuadVertexCount] = {
+            { { x0, y0 }, cTop },    { { x1, y0 }, cTop },    { { x1, y1 }, cBottom },
+            { { x0, y0 }, cTop },    { { x1, y1 }, cBottom }, { { x0, y1 }, cBottom },
+        };
+
+        BufferUpdateDesc update = { pQuadVertexBuffer };
+        beginUpdateResource(&update);
+        memcpy(update.pMappedData, vertices, sizeof(vertices));
+        endUpdateResource(&update);
+    }
 
     bool addSwapChain()
     {

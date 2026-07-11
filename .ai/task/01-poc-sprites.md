@@ -1,6 +1,6 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** in-progress (degrau 0 ✅ em 2026-07-11)
+- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -64,16 +64,25 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
      todos os caminhos relativos dos vcxproj/PathStatement/Shaders.list
      sem alteração.
 
-1. **Primeiro quad próprio** (risco: FSL + pipeline): o primeiro shader FSL
+1. **Primeiro quad próprio** ✅ (2026-07-11): o primeiro shader FSL
    de verdade do projeto — vertex + pixel desenhando **um retângulo
    colorido** (sem textura). Puxa a cadeia que o middleware escondia: shader
    no `Shaders.list`, root signature, pipeline com blend/depth configurados,
    vertex buffer, **projeção ortográfica**, ciclo `Load`/`Unload` com
    `ReloadDesc` recriando o pipeline. Sem textura de propósito: se falhar, o
    suspeito é o pipeline, não o loader de imagem.
-   - **Aceite:** retângulo colorido na tela; sobrevive a resize e
+   - **Aceite:** ✅ retângulo colorido na tela; sobrevive a resize e
      alt-tab/fullscreen; coexiste com o texto do `ForgeUi` no mesmo quadro
-     (ordem dos passes correta).
+     (ordem dos passes correta) — validado em 2026-07-11 com screenshots
+     (quad gradiente sob o texto fontstash) e resize programático (swapchain
+     recriado 1680×720 → 1084×861; o quad manteve os 320×180 px, provando a
+     projeção CPU-side; estado da cena preservado). Fullscreen/alt-tab usa o
+     mesmo caminho de reload — vale um olho manual, mas sem risco novo.
+     Aprendizados: na v1.63 o pipeline usa `PIPELINE_LAYOUT_DESC` com SRT
+     sets (shader sem recursos = todos NULL, sobra só o static-sampler
+     layout) e `ROOT_SIGNATURE(DefaultRootSignature)` no FSL; a partição do
+     Load/Unload segue o `01_Transformations` (shader ← FSL, pipeline ←
+     formato do swapchain, conteúdo do VB ← dimensões da tela).
 
 2. **Quad texturizado com alpha** (risco: IResourceLoader + tooling de
    assets): carregar textura via `addResource(TextureLoadDesc)`, sampler
