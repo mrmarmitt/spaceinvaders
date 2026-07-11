@@ -1,0 +1,17 @@
+BasedOnStyle: Google
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AllowShortFunctionsOnASingleLine: InlineOnly
+BreakConstructorInitializers: AfterColon
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: true
+IncludeBlocks: Preserve
+SpacesBeforeTrailingComments: 1
+SpaceBeforeParens: ControlStatements
+Cpp11BracedListStyle: true
+ReflowComments: true

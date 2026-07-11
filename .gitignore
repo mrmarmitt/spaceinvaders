@@ -1,0 +1,52 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+*out 
+
+# VsCode
+*.vs
+*.vscode
+
+# Visual Studio (config local por usuário)
+*.vcxproj.user
+
+# CLion
+*.idea
+
+# Presets de máquina (caminhos de compilador específicos — não versionar)
+CMakeUserPresets.json
+
+# Dados de jogo gerados em runtime
+records.tsv
+
+# Pacotes de distribuição (gerados por tools/dist-theforge.ps1)
+dist/
