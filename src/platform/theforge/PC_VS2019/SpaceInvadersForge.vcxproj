@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SpaceInvadersForge — degrau 0 da PoC sprites (.ai/task/01-poc-sprites.md).
+
+  Receita herdada do 8PuzzleForge.vcxproj (PoC do 8puzzle): pasta PC_VS2019
+  obrigatoria (o TF_Shared.props seleciona os props de plataforma pelo
+  caminho), LibraryPath no build do The-Forge, eventos de build sobrescritos
+  (output fora da arvore do The-Forge), rootsigs por-app via FSL,
+  /std:c++latest + /Zc:char8_t-, RTTI e excecoes ligados (cengine lanca
+  std::invalid_argument; o dominio do jogo vai precisar dos dois).
+  Pre-requisitos: solution Unit_Tests do The-Forge buildada na mesma
+  Configuration e checkout do repo irmao ../cengine em versao >= 0.4.0
+  (EngineManager com modo hospedado — task 15).
+-->
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- app + plataforma theforge -->
+    <ClCompile Include="..\src\SpaceInvadersForge\SpaceInvadersForge.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\ForgeUi.cpp" />
+    <!-- cengine (core + routing): EngineManager em MODO HOSPEDADO (0.4.0,
+         task 15) — o The-Forge e dono do loop e chama frame(dt). -->
+    <ClCompile Include="$(CengineRoot)core\src\EngineManager.cpp" />
+    <ClCompile Include="$(CengineRoot)modules\routing\src\GameManager.cpp" />
+    <ClCompile Include="$(CengineRoot)modules\routing\src\RouterInMemory.cpp" />
+    <ClCompile Include="$(CengineRoot)modules\routing\src\SceneRepository.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\src\SpaceInvadersForge\GPUCfg\gpu.cfg" />
+  </ItemGroup>
+  <ItemGroup>
+    <FSLShader Include="..\src\SpaceInvadersForge\Shaders\FSL\Shaders.list" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{C638563A-3983-4E9F-A70F-B111404BED25}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="..\..\..\..\..\The-Forge\Examples_3\Build_Props\VS\TF_Shared.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <TFBuildRoot>$(TheForgeRoot)Examples_3\Unit_Tests\PC_VS2019\</TFBuildRoot>
+    <GameRoot>$([System.IO.Path]::GetFullPath("$(MSBuildThisFileDirectory)..\..\..\..\"))</GameRoot>
+    <CengineRoot>$([System.IO.Path]::GetFullPath("$(GameRoot)..\cengine\"))</CengineRoot>
+    <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+    <IntDir>$(GameRoot)out\theforge\$(Platform)\$(Configuration)\Intermediate\$(ProjectName)\</IntDir>
+    <OutDir>$(GameRoot)out\theforge\$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
+    <LibraryPath>$(TFBuildRoot)$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
+    <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(TheForgeRoot);$(GameRoot)src;$(CengineRoot)core\include;$(CengineRoot)modules\routing\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- O The-Forge compila com /GR- e sem /EH, mas o jogo precisa dos dois:
+           excecoes na cengine (EngineManager valida fixedDt) e RTTI/excecoes
+           no dominio que entra no degrau 5. -->
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <!-- u8"" -> const char* no DEFINE_APPLICATION_MAIN do The-Forge; o
+           char8_t do C++20 proibe — /Zc:char8_t- restaura o comportamento
+           antigo so para isso (aprendizado da PoC do 8puzzle). -->
+      <AdditionalOptions>/Zc:char8_t- %(AdditionalOptions)</AdditionalOptions>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
+      <AdditionalDependencies>
+        Xinput9_1_0.lib;
+        ws2_32.lib;
+        Renderer.lib;
+        OS.lib;
+        %(AdditionalDependencies);
+      </AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>$(TFBuildRoot)dpi-aware.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
+    <!-- Sobrescreve os eventos do Examples.x64.props (que assumem output na
+         arvore do The-Forge): shaders de fonte/UI do projeto OS antes do link,
+         DLLs de runtime e configs depois. -->
+    <PreLinkEvent>
+      <Command>
+        if exist "$(TFBuildRoot)$(Platform)\$(Configuration)\OS\Shaders\" xcopy /Y /S /D "$(TFBuildRoot)$(Platform)\$(Configuration)\OS\Shaders\*" "$(OutDir)Shaders\"
+        if exist "$(TFBuildRoot)$(Platform)\$(Configuration)\OS\CompiledShaders\" xcopy /Y /S /D "$(TFBuildRoot)$(Platform)\$(Configuration)\OS\CompiledShaders\*" "$(OutDir)CompiledShaders\"
+      </Command>
+    </PreLinkEvent>
+    <PostBuildEvent>
+      <Command>
+        xcopy "$(TheForgeRoot)Common_3\Graphics\ThirdParty\OpenSource\VulkanSDK\bin\Win32\*.dll" "$(OutDir)" /S /Y /D
+        xcopy "$(TheForgeRoot)Common_3\Graphics\ThirdParty\OpenSource\VulkanSDK\bin\Win32\*.json" "$(OutDir)" /S /Y /D
+        xcopy "$(TheForgeRoot)Common_3\Graphics\ThirdParty\OpenSource\ags\ags_lib\lib\amd_ags_x64.dll" "$(OutDir)amd_ags_x64.dll"* /S /Y /D
+        xcopy "$(TheForgeRoot)Common_3\Graphics\ThirdParty\OpenSource\DirectXShaderCompiler\bin\x64\dxcompiler.dll" "$(OutDir)dxcompiler.dll"* /S /Y /D
+        xcopy "$(TheForgeRoot)Common_3\Graphics\ThirdParty\OpenSource\Direct3d12Agility\bin\x64\*.dll" "$(OutDir)"* /S /Y /D
+        xcopy "$(TheForgeRoot)Common_3\Graphics\ThirdParty\OpenSource\winpixeventruntime\bin\WinPixEventRuntime.dll" "$(OutDir)WinPixEventRunTime.dll"* /S /Y /D
+        rem PathStatement PROPRIO: os mounts do The-Forge assumem o exe dentro
+        rem da arvore dele; o nosso aponta para ../The-Forge a partir do
+        rem out/theforge deste repo (repos irmaos no workspace).
+        xcopy /Y /D "..\src\$(ProjectName)\PathStatement.txt" "$(OutDir)"
+        xcopy /Y /D "..\src\$(ProjectName)\GPUCfg\gpu.cfg" "$(OutDir)"
+        xcopy "$(TheForgeRoot)Common_3\OS\Windows\pc_gpu.data" "$(OutDir)gpu.data*" /Y /D
+
+        if not exist "$(OutDir)PipelineCaches\" mkdir "$(OutDir)PipelineCaches\"
+        if not exist "$(OutDir)Screenshots\" mkdir "$(OutDir)Screenshots\"
+        if not exist "$(OutDir)Debug\" mkdir "$(OutDir)Debug\"
+        if not exist "$(OutDir)Scripts\" mkdir "$(OutDir)Scripts\"
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <FSLShader>
+      <OutDir>$(OutDir)Shaders</OutDir>
+      <BinaryOutDir>$(OutDir)CompiledShaders</BinaryOutDir>
+      <Compile>true</Compile>
+      <Language>DIRECT3D12</Language>
+    </FSLShader>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(TheForgeRoot)Common_3\Tools\ForgeShadingLanguage\VS\fsl.targets" />
+  </ImportGroup>
+</Project>
