@@ -1,6 +1,6 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** todo
+- **Status:** in-progress (degrau 0 ✅ em 2026-07-11)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -49,14 +49,20 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
 
 ## Degraus
 
-0. **Casco revalidado** (risco: nenhum — é replay): reinstanciar o esqueleto
+0. **Casco revalidado** ✅ (2026-07-11): reinstanciar o esqueleto
    provado na PoC 1, agora neste repo: vcxproj em `PC_VS2019/` (a pasta
    PRECISA ter esse nome — `TF_Shared.props`), `PathStatement.txt` próprio,
    `Shaders.list` só com os rootsigs, `IApp` desenhando texto via `ForgeUi`
    copiado, cenas de teste A↔B com ESC saindo. Objetivo: provar que o
    conhecimento da PoC 1 é reproduzível fora do repo do 8puzzle.
-   - **Aceite:** janela abre, texto desenha, navegação A↔B funciona, ESC
-     encerra limpo.
+   - **Aceite:** ✅ janela abre, texto desenha, navegação A↔B funciona, ESC
+     encerra limpo — validado em 2026-07-11 (build Release x64; log com init
+     + swapchain + ciclo onEnter/onExit; A↔B/ESC verificados manualmente).
+     Duas descobertas no caminho: a task 15 da cengine JÁ estava entregue
+     (0.4.0 — o casco usa `EngineManager::frame(dt)` hospedado, não o
+     mapeamento manual do CengineAdapter), e o layout espelhado preservou
+     todos os caminhos relativos dos vcxproj/PathStatement/Shaders.list
+     sem alteração.
 
 1. **Primeiro quad próprio** (risco: FSL + pipeline): o primeiro shader FSL
    de verdade do projeto — vertex + pixel desenhando **um retângulo
