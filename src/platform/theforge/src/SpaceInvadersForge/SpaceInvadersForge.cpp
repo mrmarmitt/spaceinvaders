@@ -1,8 +1,9 @@
-// SpaceInvadersForge — degraus 0 a 3 da PoC sprites (.ai/task/01-poc-sprites.md):
-// o casco da plataforma The-Forge (degrau 0) + o sprite batcher com atlas
-// (degrau 3). Os caminhos inline dos degraus 1 e 2 (quad gradiente e sprite
-// unico) foram absorvidos pelo ForgeSpriteUi — o batcher E a peca que eles
-// ensaiavam; o git guarda as versoes didaticas.
+// SpaceInvadersForge — degraus 0 a 4 da PoC sprites (.ai/task/01-poc-sprites.md):
+// o casco da plataforma The-Forge (degrau 0), o sprite batcher com atlas
+// (degrau 3) e animacao + tempo com passo fixo (degrau 4). Os caminhos
+// inline dos degraus 1 e 2 (quad gradiente e sprite unico) foram absorvidos
+// pelo ForgeSpriteUi — o batcher E a peca que eles ensaiavam; o git guarda
+// as versoes didaticas.
 //
 // Mesma receita do 8PuzzleForge.cpp: o IApp hospeda o EngineManager da
 // cengine em MODO HOSPEDADO (cengine 0.4.0, task 15) — sem window manager
@@ -144,21 +145,90 @@ public:
     void onExit() override { LOGF(eINFO, "[cengine] onExit: %s (%.1fs, %llu updates)", m_label, m_elapsed, (unsigned long long)m_updates); }
 };
 
-/// Demo do batcher (degrau 3): horda 5x11 + jogador + tiros fake, tudo em UM
-/// draw call, movendo em bloco. O movimento e funcao pura do tempo acumulado
-/// (sem estado de marcha — aceleracao e timestep sao o risco do degrau 4).
+/// Demo do batcher + tempo (degraus 3 e 4): horda 5x11 marchando em passos
+/// discretos com aceleracao conforme invasores morrem (K simula a morte) e
+/// animacao de 2 frames trocando a regiao de UV a cada passo.
+///
+/// O veredito do timestep (degrau 4): TODO movimento avanca no update(dt) —
+/// o passo fixo de 1/60s do EngineManager hospedado (task 15 da cengine) —
+/// e o draw() so le o estado. E isso que torna o comportamento identico com
+/// vsync ligado ou desligado: updates anda a 60Hz cravados enquanto draws
+/// segue a taxa de render (os dois contadores ficam na tela de proposito).
 class HordeScene final: public cengine::core::IScene
 {
+    static constexpr uint32_t kRows = 5;
+    static constexpr uint32_t kCols = 11;
+    static constexpr float    kScale = 3.0f;
+    static constexpr float    kCellW = 16.0f * kScale;
+    static constexpr float    kCellH = 12.0f * kScale;
+    static constexpr float    kStepX = 14.0f;      // px por passo de marcha
+    static constexpr float    kDropY = 20.0f;      // px por descida na borda
+    static constexpr float    kMaxDrop = 160.0f;   // teto de descida (demo)
+    static constexpr float    kShotSpeed = 260.0f; // px/s
+
     double   m_elapsed = 0.0;
     uint64_t m_updates = 0;
+    uint64_t m_draws = 0;
+
+    bool     m_alive[kRows * kCols] = {};
+    uint32_t m_aliveCount = kRows * kCols;
+
+    float    m_offsetX = 0.0f;
+    float    m_offsetY = 0.0f;
+    float    m_dir = 1.0f;
+    double   m_stepTimer = 0.0;
+    uint32_t m_steps = 0;
+
+    float m_shotTravel[3] = { 0.0f, 170.0f, 340.0f };
+
+    // Aceleracao suave: o intervalo entre passos encolhe conforme a horda
+    // morre — ~0.6s com os 55 vivos, ~0.07s com o ultimo (como no arcade,
+    // onde o "relogio" da horda era o proprio custo de percorre-la).
+    [[nodiscard]] double stepInterval() const { return 0.06 + 0.54 * ((double)m_aliveCount / (kRows * kCols)); }
 
 public:
+    HordeScene()
+    {
+        for (bool& alive : m_alive)
+            alive = true;
+    }
+
     void onEnter() override { LOGF(eINFO, "[cengine] onEnter: HORDA"); }
 
     void update(cengine::core::Seconds dt) override
     {
         m_elapsed += dt.count();
         ++m_updates;
+
+        // marcha em passos discretos: o timer acumula o dt FIXO do engine,
+        // entao a cadencia independe da taxa de render (vsync on/off)
+        m_stepTimer += dt.count();
+        while (m_stepTimer >= stepInterval())
+        {
+            m_stepTimer -= stepInterval();
+            ++m_steps;
+
+            const float width = forgeui::screenWidth();
+            const float gridW = kCols * kCellW;
+            const float margin = 32.0f;
+            const float left = (width - gridW) * 0.5f + m_offsetX;
+
+            const bool atEdge = (m_dir > 0.0f && left + gridW + kStepX > width - margin) || //
+                                (m_dir < 0.0f && left - kStepX < margin);
+            if (atEdge)
+            {
+                m_dir = -m_dir;
+                if (m_offsetY < kMaxDrop) // desce ate o teto da demo
+                    m_offsetY += kDropY;
+            }
+            else
+            {
+                m_offsetX += m_dir * kStepX;
+            }
+        }
+
+        for (float& travel : m_shotTravel)
+            travel += kShotSpeed * (float)dt.count();
     }
 
     void input() override
@@ -172,57 +242,80 @@ public:
         {
             gRouter->requestState(std::make_unique<AppState>(std::string(cengine::routing::kExitStateCode), "Exit"));
         }
+        else if (event.key == Key::Char && (event.character == 'k' || event.character == 'K'))
+        {
+            // morte simulada: apaga o primeiro vivo de baixo para cima
+            // (ordem que a mira do jogador alcancaria) — cada morte encurta
+            // o stepInterval(), acelerando a marcha
+            for (int i = (int)(kRows * kCols) - 1; i >= 0; --i)
+            {
+                if (m_alive[i])
+                {
+                    m_alive[i] = false;
+                    --m_aliveCount;
+                    break;
+                }
+            }
+            if (m_aliveCount == 0) // horda nova: demo recomecavel
+            {
+                for (bool& alive : m_alive)
+                    alive = true;
+                m_aliveCount = kRows * kCols;
+                m_offsetX = 0.0f;
+                m_offsetY = 0.0f;
+                m_dir = 1.0f;
+            }
+        }
     }
 
     void draw() override
     {
+        ++m_draws;
+
         const float width = forgeui::screenWidth();
         const float height = forgeui::screenHeight();
-        const float time = (float)m_elapsed;
 
         // sprites PRIMEIRO, texto depois: o primeiro drawText da flush no
         // lote, entao o texto fica por cima (camadas = ordem de chamada).
-        const float scale = 3.0f;
-        const float cellW = 16.0f * scale; // celula logica da grade
-        const float cellH = 12.0f * scale;
+        const float gridW = kCols * kCellW;
+        const float left = (width - gridW) * 0.5f + m_offsetX;
+        const float top = height * 0.30f + m_offsetY;
 
-        const uint32_t rows = 5;
-        const uint32_t cols = 11;
-        const float    gridW = cols * cellW;
-        const float    marchX = sinf(time * 0.9f) * 90.0f; // bloco inteiro
-        const float    left = (width - gridW) * 0.5f + marchX;
-        const float    top = height * 0.30f;
+        // animacao de 2 frames: a regiao de UV troca a cada passo da marcha
+        // (mesma cadencia do arcade — anda, troca de pose)
+        const bool frame1 = (m_steps & 1u) != 0;
 
-        for (uint32_t row = 0; row < rows; ++row)
+        for (uint32_t row = 0; row < kRows; ++row)
         {
-            // linhas como no arcade: lulas em cima, caranguejos no meio,
-            // polvos embaixo — tints diferentes provando a cor por vertice.
-            const forgesprite::SpriteRegion& region = (row == 0)  ? forgesprite::sprites::kSquid0
-                                                      : (row < 3) ? forgesprite::sprites::kCrab0
-                                                                  : forgesprite::sprites::kOcto0;
+            const forgesprite::SpriteRegion& region =
+                (row == 0)  ? (frame1 ? forgesprite::sprites::kSquid1 : forgesprite::sprites::kSquid0)
+                : (row < 3) ? (frame1 ? forgesprite::sprites::kCrab1 : forgesprite::sprites::kCrab0)
+                            : (frame1 ? forgesprite::sprites::kOcto1 : forgesprite::sprites::kOcto0);
             const uint32_t tint = (row == 0) ? forgeui::color::kText : (row < 3) ? forgeui::color::kAccent : forgeui::color::kTitle;
 
-            for (uint32_t col = 0; col < cols; ++col)
+            for (uint32_t col = 0; col < kCols; ++col)
             {
+                if (!m_alive[row * kCols + col])
+                    continue;
                 // centraliza o sprite na celula (larguras nativas diferem)
-                const float x = left + col * cellW + (16.0f - region.w) * 0.5f * scale;
-                const float y = top + row * cellH;
-                forgesprite::drawSprite(region, x, y, scale, tint);
+                const float x = left + col * kCellW + (16.0f - region.w) * 0.5f * kScale;
+                const float y = top + row * kCellH;
+                forgesprite::drawSprite(region, x, y, kScale, tint);
             }
         }
 
         // jogador ao centro, embaixo
         const forgesprite::SpriteRegion& player = forgesprite::sprites::kPlayer;
         const float                      playerY = height - 130.0f;
-        forgesprite::drawSprite(player, (width - player.w * scale) * 0.5f, playerY, scale, forgeui::color::kSuccess);
+        forgesprite::drawSprite(player, (width - player.w * kScale) * 0.5f, playerY, kScale, forgeui::color::kSuccess);
 
-        // tiros fake subindo (posicao = funcao do tempo, com wrap)
-        const float shotTravel = playerY - (top + rows * cellH);
+        // tiros fake subindo (avancam no update; aqui so o wrap visual)
+        const float shotRange = playerY - height * 0.30f;
         for (uint32_t i = 0; i < 3; ++i)
         {
             const float shotX = width * (0.35f + 0.15f * i);
-            const float shotY = playerY - fmodf(time * 260.0f + i * 170.0f, shotTravel);
-            forgesprite::drawSprite(forgesprite::sprites::kShot, shotX, shotY, scale, forgeui::color::kText);
+            const float shotY = playerY - fmodf(m_shotTravel[i], shotRange);
+            forgesprite::drawSprite(forgesprite::sprites::kShot, shotX, shotY, kScale, forgeui::color::kText);
         }
 
         // texto por cima (forca o flush do lote de sprites)
@@ -230,11 +323,16 @@ public:
 
         const forgesprite::Stats stats = forgesprite::lastFrameStats();
         char status[160];
-        snprintf(status, sizeof(status), "sprites: %u  |  draw calls: %u  |  tempo: %.1fs  |  updates: %llu", stats.sprites,
-                 stats.drawCalls, m_elapsed, (unsigned long long)m_updates);
+        snprintf(status, sizeof(status), "sprites: %u  |  draw calls: %u  |  vivos: %u  |  passos: %u", stats.sprites,
+                 stats.drawCalls, m_aliveCount, m_steps);
         forgeui::drawTextCentered(status, height * 0.06f + 56.0f, 22.0f, forgeui::color::kValue);
 
-        forgeui::drawHints("horda em 1 draw call — ENTER -> Cena B  |  ESC -> sair");
+        char timing[160];
+        snprintf(timing, sizeof(timing), "tempo: %.1fs  |  updates: %llu (passo fixo 60Hz)  |  draws: %llu (taxa de render)",
+                 m_elapsed, (unsigned long long)m_updates, (unsigned long long)m_draws);
+        forgeui::drawTextCentered(timing, height * 0.06f + 88.0f, 20.0f, forgeui::color::kText);
+
+        forgeui::drawHints("K mata um invasor (acelera a marcha)  |  ENTER -> Cena B  |  ESC -> sair");
     }
 
     void onExit() override { LOGF(eINFO, "[cengine] onExit: HORDA (%.1fs, %llu updates)", m_elapsed, (unsigned long long)m_updates); }
@@ -257,6 +355,12 @@ class SpaceInvadersForge: public IApp
 public:
     bool Init()
     {
+        // vsync ligado por default (o framework vem com OFF — medimos
+        // ~5700 fps de render na iGPU, GPU queimando a toa). A logica nao
+        // percebe a diferenca: passo fixo no update(dt) — aceite do degrau 4,
+        // validado nas duas condicoes.
+        mSettings.mVSyncEnabled = true;
+
         // renderer
         RendererDesc settings;
         memset(&settings, 0, sizeof(settings));

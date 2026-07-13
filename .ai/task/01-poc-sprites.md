@@ -1,7 +1,7 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11; degraus 2 e 3 ✅
-  em 2026-07-13)
+- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11; degraus 2, 3 e 4
+  ✅ em 2026-07-13 — falta só o degrau 5, o jogo de verdade)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -156,14 +156,31 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
        rebuild incremental — limpar `out/.../Intermediate/SpaceInvadersForge`
        é a cura; investigar `/LTCG:INCREMENTAL` se virar rotina.
 
-4. **Animação + tempo** (risco: dt e timestep): animação de 2 frames por
-   troca de região de UV com timer; horda marchando com aceleração conforme
-   "morre" (mortes simuladas por tecla). Decidir o timestep: replicar o
-   acumulador de passo fixo da cengine no adaptador, ou usar o `frame(dt)`
-   hospedado se a task 15 da cengine tiver andado. Este degrau é o caso de
-   teste real daquela task — registrar o veredito.
-   - **Aceite:** horda anima e acelera suavemente; comportamento idêntico
-     com vsync ligado/desligado (lógica independente do framerate).
+4. **Animação + tempo** ✅ (2026-07-13): animação de 2 frames por troca de
+   região de UV a cada passo da marcha; horda marchando em passos discretos
+   (anda, borda → desce e inverte) com aceleração conforme "morre" (K
+   simula a morte; o intervalo entre passos encolhe de ~0.6s para ~0.07s).
+   - **Aceite:** ✅ horda anima e acelera; comportamento idêntico com vsync
+     ligado/desligado — validado em 2026-07-13 com capturas em ~10s nas
+     duas condições: vsync OFF rendeu **56.106 draws** (~5700 fps na iGPU)
+     e vsync ON **592 draws** (60 fps), e nas duas: updates = 60Hz
+     cravados, **passos: 16** iguais, posição e pose da horda idênticas.
+     Os contadores `updates (passo fixo 60Hz)` vs `draws (taxa de render)`
+     ficam na tela expondo a separação. A morte por tecla (K) não foi
+     exercitada pela validação automatizada (injeção de tecla é bloqueada
+     pelo Windows) — checar manualmente que a marcha acelera.
+   - **VEREDITO DO TIMESTEP (alimenta a task 15 da cengine):** o
+     `frame(dt)` hospedado da cengine 0.4.0 **resolve o problema por
+     inteiro** — o acumulador interno de passo fixo (1/60s) entrega
+     `update(dt)` determinístico independente da taxa de render, sem
+     nenhum acumulador no adaptador. A receita que funciona: movimento
+     SÓ no `update(dt)` (timer de marcha acumulando o dt fixo), `draw()`
+     só lê estado. Nada a mudar na cengine.
+   - **Aprendizado extra:** o default do The-Forge é vsync OFF
+     (`mSettings.mVSyncEnabled = false`) — na iGPU isso queima GPU a
+     ~5700 fps; o casco agora liga vsync no `Init()`. O toggle em runtime
+     já existia de graça no casco (o `Draw()` compara swapchain vs
+     mSettings e recria).
 
 5. **O jogo de verdade** (risco: nenhum novo — é integração): domínio Space
    Invaders em C++ puro (entidades, colisão AABB, ondas, pontuação, vidas),
