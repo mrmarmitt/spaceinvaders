@@ -50,3 +50,7 @@ records.tsv
 
 # Pacotes de distribuição (gerados por tools/dist-theforge.ps1)
 dist/
+
+# Arvore de build do CMake (dominio + testes)
+build/
+cmake-build-*/

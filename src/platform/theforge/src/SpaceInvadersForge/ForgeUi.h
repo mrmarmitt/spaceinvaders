@@ -71,6 +71,12 @@ void beginDraw(Cmd* cmd, float width, float height, uint32_t fontID);
 // Consome no maximo um evento de tecla por chamada (fila esvazia 1/quadro).
 KeyEvent readKey();
 
+// Estado continuo (teclas SEGURADAS), amostrado no beginInput — a fila de
+// edges acima nao serve para movimento: mover o canhao exige saber se a
+// seta esta pressionada AGORA, todo quadro (degrau 5).
+float moveAxis(); // -1 esquerda .. +1 direita (setas)
+bool  fireHeld(); // ESPACO pressionado (a cena detecta a borda de subida)
+
 float screenWidth();
 float screenHeight();
 

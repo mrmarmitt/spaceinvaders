@@ -1,7 +1,7 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11; degraus 2, 3 e 4
-  ✅ em 2026-07-13 — falta só o degrau 5, o jogo de verdade)
+- **Status:** done (degraus 0 e 1 ✅ em 2026-07-11; degraus 2 a 5 ✅ em
+  2026-07-13 — resta só a partida manual de ponta a ponta do jogador)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -183,21 +183,61 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
      já existia de graça no casco (o `Draw()` compara swapchain vs
      mSettings e recria).
 
-5. **O jogo de verdade** (risco: nenhum novo — é integração): domínio Space
-   Invaders em C++ puro (entidades, colisão AABB, ondas, pontuação, vidas),
-   testável sem plataforma como no 8puzzle. Cenas
-   splash/menu/jogo/gameOver/recordes nos mesmos códigos de estado,
-   `GameRouter` + factory no padrão provado em três plataformas, recordes em
-   TSV relativo ao diretório do exe.
-   - **Aceite:** jogável de ponta a ponta — onda completa, morte, game over
-     com recorde nomeado e persistido; domínio com testes rodando no CMake
-     sem The-Forge.
+5. **O jogo de verdade** ✅ (2026-07-13): domínio Space Invaders em C++ puro
+   (`src/spaceinvaders/game/` — `World` com jogador, horda, tiro único,
+   bombas, colisão AABB, ondas, pontuação, vidas, invasão), testável sem
+   plataforma. Cenas splash/menu/jogo/gameOver/recordes em `scene/`,
+   `GameRouter` + `StateGameFlow` + `ForgeSceneFactory` no padrão do
+   8puzzle, recordes em `records.tsv` relativo ao diretório do exe.
+   - **Aceite:** ✅ domínio com **13 testes GoogleTest passando no CMake sem
+     The-Forge** (estado inicial, bordas, tiro único, mira/pontos por tipo,
+     troca de onda, invasão, bombas até o game over, cooldown pós-morte,
+     ranking/TSV/top-10). Validação visual no binário real em 2026-07-13:
+     gameplay (horda colorida marchando e descendo, bombas, HUD
+     pontos/onda, vidas como mini-canhões), transição real
+     jogo → game over por bombas (tela FIM DE JOGO + entrada de nome de
+     recorde) e splash com a tabela de pontos clássica animada. A partida
+     jogada de ponta a ponta (mover/atirar/onda completa/recorde nomeado)
+     fica para a checagem manual do jogador — injeção de tecla segue
+     bloqueada pelo Windows.
+   - **Aprendizados:**
+     - Arena virtual de **224×256 (a resolução interna do arcade)** no
+       domínio: os sprites do atlas ficam 1:1 com as unidades do mundo, e a
+       cena projeta com escala inteira (`floor`) — pixels crisp de graça e
+       o domínio 100% ignorante de tela.
+     - Movimento contínuo exigiu **input de tecla segurada**: bindings com
+       fase `pressed` (valor enquanto pressionada) ao lado dos `released`
+       (edge) existentes; o forgeui ganhou `moveAxis()`/`fireHeld()`
+       amostrados no beginInput, e a cena detecta a borda de subida do
+       ESPAÇO para o gatilho.
+     - Validação sem teclado: começar o router direto no estado alvo
+       (`GameSG` no lugar de `InitialSG`) exercita cena e transições reais
+       sem navegar menus — o truque vale para qualquer cena.
+     - A versão CMake usa cengine 0.5.0 (FetchContent) e o vcxproj compila
+       a cengine irmã (0.4.0) — mesma dualidade do 8puzzle, sem atrito.
+
+## Registro do aprendizado (fechamento da PoC)
+
+- **O que o batcher exigiu da plataforma:** um vertex buffer CPU_TO_GPU
+  persistentemente mapeado com um trecho por frame in flight (a fence do cmd
+  ring é a única sincronização), pipeline com alpha blending e sampler
+  nearest, e o contrato de camadas com o texto (drawText dá flush no lote
+  pendente). Nada além disso — o resto é CPU pura.
+- **O que o `ForgeSpriteUi` expõe para ser reutilizável:** `drawSprite(
+  região-em-px-do-atlas, x, y, escala, tint)` em modo imediato + tabela de
+  regiões. Para o próximo jogo falta parametrizar o atlas (hoje `atlas.dds`
+  fixo) e, se houver rotação/câmera, entrar uma transform — fora disso a API
+  se provou suficiente para um jogo completo.
+- **Veredito do timestep:** registrado no degrau 4 — o `frame(dt)` hospedado
+  da cengine (task 15) resolve por inteiro; nenhum acumulador no adaptador,
+  comportamento idêntico com vsync on/off.
 
 ## Critérios de aceite
 
-- [ ] Degraus 0–5 validados (aceites individuais acima).
-- [ ] Registro do aprendizado (seção a preencher ao fim): o que o batcher
-      exigiu da plataforma, o que o `ForgeSpriteUi` precisa expor para ser
+- [x] Degraus 0–5 validados (aceites individuais acima; falta só a partida
+      manual de ponta a ponta do jogador).
+- [x] Registro do aprendizado (seção acima): o que o batcher exigiu da
+      plataforma, o que o `ForgeSpriteUi` precisa expor para ser
       reutilizável pelo próximo jogo, e o veredito sobre timestep — alimenta
       a task 15 da cengine.
 

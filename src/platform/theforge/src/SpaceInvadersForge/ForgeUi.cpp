@@ -19,8 +19,16 @@ struct Bindings {
     InputEnum enter = {};
     InputEnum escape = {};
     InputEnum backspace = {};
+    // estado segurado (fase "pressed" = valor enquanto pressionada)
+    InputEnum moveLeft = {};
+    InputEnum moveRight = {};
+    InputEnum fire = {};
 };
 Bindings gBindings;
+
+// snapshot do estado segurado, amostrado por beginInput
+float gMoveAxis = 0.0f;
+bool  gFireHeld = false;
 
 // Fila de eventos: o app enfileira no Update; as cenas consomem 1 por input().
 constexpr size_t     kQueueMax = 32;
@@ -59,7 +67,10 @@ void initBindings()
                            "si_right; button; K_RIGHTARROW; released\n"
                            "si_enter; button; K_ENTER; released\n"
                            "si_escape; button; K_ESCAPE; released\n"
-                           "si_backspace; button; K_BACKSPACE; released");
+                           "si_backspace; button; K_BACKSPACE; released\n"
+                           "si_move_left; button; K_LEFTARROW; pressed\n"
+                           "si_move_right; button; K_RIGHTARROW; pressed\n"
+                           "si_fire; button; K_SPACE; pressed");
     gBindings.up = inputGetCustomBindingEnum("si_up");
     gBindings.down = inputGetCustomBindingEnum("si_down");
     gBindings.left = inputGetCustomBindingEnum("si_left");
@@ -67,14 +78,22 @@ void initBindings()
     gBindings.enter = inputGetCustomBindingEnum("si_enter");
     gBindings.escape = inputGetCustomBindingEnum("si_escape");
     gBindings.backspace = inputGetCustomBindingEnum("si_backspace");
+    gBindings.moveLeft = inputGetCustomBindingEnum("si_move_left");
+    gBindings.moveRight = inputGetCustomBindingEnum("si_move_right");
+    gBindings.fire = inputGetCustomBindingEnum("si_fire");
 }
 
 void beginInput(const bool acceptInput)
 {
     if (!acceptInput)
     {
+        gMoveAxis = 0.0f;
+        gFireHeld = false;
         return;
     }
+
+    gMoveAxis = inputGetValue(0, gBindings.moveRight) - inputGetValue(0, gBindings.moveLeft);
+    gFireHeld = inputGetValue(0, gBindings.fire) > 0.0f;
 
     pushIfPressed(gBindings.up, Key::Up);
     pushIfPressed(gBindings.down, Key::Down);
@@ -119,6 +138,9 @@ KeyEvent readKey()
     gQueue.erase(gQueue.begin());
     return event;
 }
+
+float moveAxis() { return gMoveAxis; }
+bool  fireHeld() { return gFireHeld; }
 
 float screenWidth() { return gWidth; }
 float screenHeight() { return gHeight; }

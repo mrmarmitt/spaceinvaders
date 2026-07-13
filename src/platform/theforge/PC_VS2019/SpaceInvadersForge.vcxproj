@@ -28,6 +28,17 @@
     <ClCompile Include="..\src\SpaceInvadersForge\SpaceInvadersForge.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeUi.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeSpriteUi.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\ForgeSceneFactory.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\scene\ForgeSplashScene.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\scene\ForgeMenuScene.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\scene\ForgeGameScene.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\scene\ForgeGameOverScene.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\scene\ForgeRecordScene.cpp" />
+    <!-- dominio do jogo (C++ puro — o mesmo codigo dos testes CMake) -->
+    <ClCompile Include="$(GameRoot)src\spaceinvaders\game\World.cpp" />
+    <ClCompile Include="$(GameRoot)src\spaceinvaders\game\GameRouter.cpp" />
+    <ClCompile Include="$(GameRoot)src\spaceinvaders\game\service\RecordService.cpp" />
+    <ClCompile Include="$(GameRoot)src\spaceinvaders\game\service\repository\FileRecordRepository.cpp" />
     <!-- cengine (core + routing): EngineManager em MODO HOSPEDADO (0.4.0,
          task 15) — o The-Forge e dono do loop e chama frame(dt). -->
     <ClCompile Include="$(CengineRoot)core\src\EngineManager.cpp" />
