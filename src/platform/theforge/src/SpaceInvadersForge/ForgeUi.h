@@ -49,19 +49,17 @@ inline constexpr uint32_t kFaint = 0xff5a5a5a;
 
 // --- ciclo de vida (chamado pelo casco da plataforma) ---
 
-// Modo hospedado (IApp): registra os custom bindings de teclado (uma vez,
-// no Init).
-void initBindings();
-
-// Modo hospedado (IApp): captura os edges de tecla + caracteres digitados do
-// quadro para a fila, via sistema de input do framework.
-// @param acceptInput false suprime a captura (ex.: UI middleware com foco).
-void beginInput(bool acceptInput);
-
-// Modo biblioteca (fase 2): enfileira um evento vindo do WndProc proprio
-// (WM_KEYDOWN/WM_CHAR). Mesmo destino do beginInput — as cenas nao percebem
-// qual casco alimentou a fila.
+// Enfileira um evento de tecla vindo do WndProc proprio (WM_KEYDOWN/
+// WM_CHAR) — modo biblioteca: o TheForgeWindowManager alimenta, as cenas
+// consomem sem saber quem alimentou. (No modo hospedado da fase 1, o
+// equivalente era o beginInput lendo o input system do framework — ver
+// git para a versao IApp.)
 void pushKey(KeyEvent event);
+
+// Publica o estado segurado do quadro (WM_KEYDOWN/WM_KEYUP rastreados pelo
+// WndProc): eixo de movimento (-1..+1) e gatilho. Chamado pelo window
+// manager a cada update(), antes das fases do jogo.
+void pushHeldState(float moveAxis, bool fireHeld);
 
 // Publica o alvo de desenho do quadro (chamado no Draw, antes do render()).
 void beginDraw(Cmd* cmd, float width, float height, uint32_t fontID);
@@ -71,8 +69,8 @@ void beginDraw(Cmd* cmd, float width, float height, uint32_t fontID);
 // Consome no maximo um evento de tecla por chamada (fila esvazia 1/quadro).
 KeyEvent readKey();
 
-// Estado continuo (teclas SEGURADAS), amostrado no beginInput — a fila de
-// edges acima nao serve para movimento: mover o canhao exige saber se a
+// Estado continuo (teclas SEGURADAS), publicado por pushHeldState — a fila
+// de edges acima nao serve para movimento: mover o canhao exige saber se a
 // seta esta pressionada AGORA, todo quadro (degrau 5).
 float moveAxis(); // -1 esquerda .. +1 direita (setas)
 bool  fireHeld(); // ESPACO pressionado (a cena detecta a borda de subida)

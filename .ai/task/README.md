@@ -10,6 +10,7 @@ um arquivo por task, com contexto, degraus e critérios de aceite. Status:
 | # | Task | Status | Categoria |
 |---|------|--------|-----------|
 | 01 | [PoC sprites — Space Invaders no The-Forge](01-poc-sprites.md) | done | Plataforma |
+| 02 | [Modo biblioteca: cengine dona do loop (IWindowManager)](02-theforge-library-mode.md) | done | Plataforma |
 
 ## Contexto do projeto
 

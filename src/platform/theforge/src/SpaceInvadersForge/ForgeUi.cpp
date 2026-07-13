@@ -2,31 +2,12 @@
 
 #include <vector>
 
-#include "Common_3/OS/Interfaces/IInput.h"
-
 #include "ForgeSpriteUi.h"
 
 namespace {
 
-// Bindings proprios (NAO incluir OS/Input/InputCommon.h: ele define os globals
-// gInputValues etc. e duplicaria os simbolos do OS.lib â€” aprendizado do
-// degrau 2). "released" = valor 1 apenas no quadro em que a tecla e solta.
-struct Bindings {
-    InputEnum up = {};
-    InputEnum down = {};
-    InputEnum left = {};
-    InputEnum right = {};
-    InputEnum enter = {};
-    InputEnum escape = {};
-    InputEnum backspace = {};
-    // estado segurado (fase "pressed" = valor enquanto pressionada)
-    InputEnum moveLeft = {};
-    InputEnum moveRight = {};
-    InputEnum fire = {};
-};
-Bindings gBindings;
-
-// snapshot do estado segurado, amostrado por beginInput
+// snapshot do estado segurado, publicado por pushHeldState (WndProc do
+// TheForgeWindowManager) a cada quadro
 float gMoveAxis = 0.0f;
 bool  gFireHeld = false;
 
@@ -47,78 +28,17 @@ void push(const Key key, const char character = '\0')
     }
 }
 
-void pushIfPressed(const InputEnum binding, const Key key)
-{
-    if (inputGetValue(0, binding) > 0.0f)
-    {
-        push(key);
-    }
-}
-
 } // namespace
 
 namespace forgeui {
 
-void initBindings()
-{
-    inputAddCustomBindings("si_up; button; K_UPARROW; released\n"
-                           "si_down; button; K_DOWNARROW; released\n"
-                           "si_left; button; K_LEFTARROW; released\n"
-                           "si_right; button; K_RIGHTARROW; released\n"
-                           "si_enter; button; K_ENTER; released\n"
-                           "si_escape; button; K_ESCAPE; released\n"
-                           "si_backspace; button; K_BACKSPACE; released\n"
-                           "si_move_left; button; K_LEFTARROW; pressed\n"
-                           "si_move_right; button; K_RIGHTARROW; pressed\n"
-                           "si_fire; button; K_SPACE; pressed");
-    gBindings.up = inputGetCustomBindingEnum("si_up");
-    gBindings.down = inputGetCustomBindingEnum("si_down");
-    gBindings.left = inputGetCustomBindingEnum("si_left");
-    gBindings.right = inputGetCustomBindingEnum("si_right");
-    gBindings.enter = inputGetCustomBindingEnum("si_enter");
-    gBindings.escape = inputGetCustomBindingEnum("si_escape");
-    gBindings.backspace = inputGetCustomBindingEnum("si_backspace");
-    gBindings.moveLeft = inputGetCustomBindingEnum("si_move_left");
-    gBindings.moveRight = inputGetCustomBindingEnum("si_move_right");
-    gBindings.fire = inputGetCustomBindingEnum("si_fire");
-}
-
-void beginInput(const bool acceptInput)
-{
-    if (!acceptInput)
-    {
-        gMoveAxis = 0.0f;
-        gFireHeld = false;
-        return;
-    }
-
-    gMoveAxis = inputGetValue(0, gBindings.moveRight) - inputGetValue(0, gBindings.moveLeft);
-    gFireHeld = inputGetValue(0, gBindings.fire) > 0.0f;
-
-    pushIfPressed(gBindings.up, Key::Up);
-    pushIfPressed(gBindings.down, Key::Down);
-    pushIfPressed(gBindings.left, Key::Left);
-    pushIfPressed(gBindings.right, Key::Right);
-    pushIfPressed(gBindings.enter, Key::Enter);
-    pushIfPressed(gBindings.escape, Key::Escape);
-    pushIfPressed(gBindings.backspace, Key::Backspace);
-
-    // Caracteres digitados (digitos do jogo, T/M dos recordes, nome do
-    // recorde). Controles (<32) ja chegam pelos bindings; ASCII apenas â€”
-    // acentos (char32 > 126) sao descartados na entrada de nome.
-    char32_t* chars = NULL;
-    uint32_t  count = 0;
-    inputGetCharInput(&chars, &count);
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        if (chars[i] >= 32 && chars[i] < 127)
-        {
-            push(Key::Char, (char)chars[i]);
-        }
-    }
-}
-
 void pushKey(const KeyEvent event) { push(event.key, event.character); }
+
+void pushHeldState(const float moveAxis, const bool fireHeld)
+{
+    gMoveAxis = moveAxis;
+    gFireHeld = fireHeld;
+}
 
 void beginDraw(Cmd* cmd, const float width, const float height, const uint32_t fontID)
 {

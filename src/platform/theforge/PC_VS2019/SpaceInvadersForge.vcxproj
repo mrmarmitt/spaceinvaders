@@ -25,9 +25,10 @@
   </ItemGroup>
   <ItemGroup>
     <!-- app + plataforma theforge -->
-    <!-- entry point + composition root (na raiz de src, como no 8puzzle) -->
+    <!-- entry point + composition root (na raiz de src, como no 8puzzle);
+         modo BIBLIOTECA: main() proprio + cengine dona do loop -->
     <ClCompile Include="$(GameRoot)src\main_theforge.cpp" />
-    <ClCompile Include="..\src\SpaceInvadersForge\SpaceInvadersForge.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\TheForgeWindowManager.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeUi.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeSpriteUi.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeSceneFactory.cpp" />
