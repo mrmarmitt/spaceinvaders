@@ -25,6 +25,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- app + plataforma theforge -->
+    <ClCompile Include="..\src\SpaceInvadersForge\main.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\SpaceInvadersForge.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeUi.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeSpriteUi.cpp" />
