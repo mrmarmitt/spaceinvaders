@@ -27,6 +27,7 @@
     <!-- app + plataforma theforge -->
     <ClCompile Include="..\src\SpaceInvadersForge\SpaceInvadersForge.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeUi.cpp" />
+    <ClCompile Include="..\src\SpaceInvadersForge\ForgeSpriteUi.cpp" />
     <!-- cengine (core + routing): EngineManager em MODO HOSPEDADO (0.4.0,
          task 15) — o The-Forge e dono do loop e chama frame(dt). -->
     <ClCompile Include="$(CengineRoot)core\src\EngineManager.cpp" />

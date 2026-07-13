@@ -4,6 +4,8 @@
 
 #include "Common_3/OS/Interfaces/IInput.h"
 
+#include "ForgeSpriteUi.h"
+
 namespace {
 
 // Bindings proprios (NAO incluir OS/Input/InputCommon.h: ele define os globals
@@ -132,6 +134,10 @@ float textWidth(const std::string& text, const float fontSize)
 
 void drawText(const std::string& text, const float x, const float y, const float fontSize, const uint32_t colorAbgr)
 {
+    // Camadas = ordem de chamada atravessando as pontes: sprites pendentes
+    // sao desenhados AGORA, para este texto ficar por cima (degrau 3).
+    forgesprite::flush();
+
     FontDrawDesc desc = {};
     desc.pText = text.c_str();
     desc.mFontID = gFontID;

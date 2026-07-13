@@ -6,14 +6,6 @@
 #rootsig compute.rootsig
 #end
 
-#vert quad.vert
-#include "quad.vert.fsl"
-#end
-
-#frag quad.frag
-#include "quad.frag.fsl"
-#end
-
 #vert sprite.vert
 #include "sprite.vert.fsl"
 #end

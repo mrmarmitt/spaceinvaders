@@ -1,8 +1,8 @@
-// SpaceInvadersForge — degraus 0 a 2 da PoC sprites (.ai/task/01-poc-sprites.md):
-// o casco da plataforma The-Forge (degrau 0), o primeiro quad proprio via
-// shader FSL, pipeline e vertex buffer (degrau 1) e o quad texturizado com
-// alpha blending — textura via IResourceLoader, sampler point e descriptor
-// set via SRT (degrau 2).
+// SpaceInvadersForge — degraus 0 a 3 da PoC sprites (.ai/task/01-poc-sprites.md):
+// o casco da plataforma The-Forge (degrau 0) + o sprite batcher com atlas
+// (degrau 3). Os caminhos inline dos degraus 1 e 2 (quad gradiente e sprite
+// unico) foram absorvidos pelo ForgeSpriteUi — o batcher E a peca que eles
+// ensaiavam; o git guarda as versoes didaticas.
 //
 // Mesma receita do 8PuzzleForge.cpp: o IApp hospeda o EngineManager da
 // cengine em MODO HOSPEDADO (cengine 0.4.0, task 15) — sem window manager
@@ -26,8 +26,10 @@
 #include <cengine/routing/SceneRepository.hpp>
 #include <cengine/routing/StateCodes.hpp>
 
+#include "ForgeSpriteUi.h"
 #include "ForgeUi.h"
 
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -46,9 +48,6 @@
 
 // fsl (INIT_RS_DESC)
 #include "Common_3/Graphics/FSL/defaults.h"
-// SRT do sprite — o MESMO header que os .fsl incluem; aqui as macros expandem
-// para os indices que SRT_SET_DESC/SRT_LAYOUT_DESC/SRT_RES_IDX consomem.
-#include "Shaders/FSL/sprite.srt.h"
 
 #include "Common_3/Utilities/Interfaces/IMemory.h" // deve ser o ultimo include
 
@@ -64,39 +63,6 @@ Semaphore* pImageAcquiredSemaphore = NULL;
 
 uint32_t gFrameIndex = 0;
 uint32_t gFontID = 0;
-
-// --- degrau 1: primeiro quad proprio (shader FSL + pipeline + vertex buffer) ---
-
-Shader*   pQuadShader = NULL;
-Pipeline* pQuadPipeline = NULL;
-Buffer*   pQuadVertexBuffer = NULL;
-
-// Vertice do quad: posicao JA em NDC — a projecao ortografica (pixels -> NDC)
-// e aplicada na CPU ao preencher o buffer, o mesmo desenho que o batcher do
-// degrau 3 fara por quadro (e que o fontstash do The-Forge ja faz).
-struct QuadVertex
-{
-    float2 position;
-    float4 color;
-};
-const uint32_t gQuadVertexCount = 6;
-
-// --- degrau 2: quad texturizado com alpha (textura + sampler + descriptor set) ---
-
-Texture*       pSpriteTexture = NULL;
-Sampler*       pSpriteSampler = NULL;
-Shader*        pSpriteShader = NULL;
-Pipeline*      pSpritePipeline = NULL;
-Buffer*        pSpriteVertexBuffer = NULL;
-DescriptorSet* pDescriptorSetSprite = NULL;
-
-// Vertice do sprite: a cor sai, o UV entra — quem colore agora e a textura.
-struct SpriteVertex
-{
-    float2 position;
-    float2 uv;
-};
-const uint32_t gSpriteVertexCount = 6;
 
 std::shared_ptr<cengine::routing::RouterInMemory> gRouter;
 std::unique_ptr<cengine::core::EngineManager>     gEngine;
@@ -172,10 +138,106 @@ public:
         snprintf(nav, sizeof(nav), "ENTER -> %s   |   ESC -> sair", m_nextLabel);
         forgeui::drawTextCentered(nav, height * 0.26f + 136.0f, 22.0f, forgeui::color::kDim);
 
-        forgeui::drawHints("sprite texturizado com alpha sobre o quad gradiente — degrau 2 da PoC sprites");
+        forgeui::drawHints("cena sem sprites: 0 draw calls do batcher — degrau 3 da PoC sprites");
     }
 
     void onExit() override { LOGF(eINFO, "[cengine] onExit: %s (%.1fs, %llu updates)", m_label, m_elapsed, (unsigned long long)m_updates); }
+};
+
+/// Demo do batcher (degrau 3): horda 5x11 + jogador + tiros fake, tudo em UM
+/// draw call, movendo em bloco. O movimento e funcao pura do tempo acumulado
+/// (sem estado de marcha — aceleracao e timestep sao o risco do degrau 4).
+class HordeScene final: public cengine::core::IScene
+{
+    double   m_elapsed = 0.0;
+    uint64_t m_updates = 0;
+
+public:
+    void onEnter() override { LOGF(eINFO, "[cengine] onEnter: HORDA"); }
+
+    void update(cengine::core::Seconds dt) override
+    {
+        m_elapsed += dt.count();
+        ++m_updates;
+    }
+
+    void input() override
+    {
+        const KeyEvent event = forgeui::readKey();
+        if (event.key == Key::Enter)
+        {
+            gRouter->requestState(std::make_unique<AppState>("scene_b", "Cena B"));
+        }
+        else if (event.key == Key::Escape)
+        {
+            gRouter->requestState(std::make_unique<AppState>(std::string(cengine::routing::kExitStateCode), "Exit"));
+        }
+    }
+
+    void draw() override
+    {
+        const float width = forgeui::screenWidth();
+        const float height = forgeui::screenHeight();
+        const float time = (float)m_elapsed;
+
+        // sprites PRIMEIRO, texto depois: o primeiro drawText da flush no
+        // lote, entao o texto fica por cima (camadas = ordem de chamada).
+        const float scale = 3.0f;
+        const float cellW = 16.0f * scale; // celula logica da grade
+        const float cellH = 12.0f * scale;
+
+        const uint32_t rows = 5;
+        const uint32_t cols = 11;
+        const float    gridW = cols * cellW;
+        const float    marchX = sinf(time * 0.9f) * 90.0f; // bloco inteiro
+        const float    left = (width - gridW) * 0.5f + marchX;
+        const float    top = height * 0.30f;
+
+        for (uint32_t row = 0; row < rows; ++row)
+        {
+            // linhas como no arcade: lulas em cima, caranguejos no meio,
+            // polvos embaixo — tints diferentes provando a cor por vertice.
+            const forgesprite::SpriteRegion& region = (row == 0)  ? forgesprite::sprites::kSquid0
+                                                      : (row < 3) ? forgesprite::sprites::kCrab0
+                                                                  : forgesprite::sprites::kOcto0;
+            const uint32_t tint = (row == 0) ? forgeui::color::kText : (row < 3) ? forgeui::color::kAccent : forgeui::color::kTitle;
+
+            for (uint32_t col = 0; col < cols; ++col)
+            {
+                // centraliza o sprite na celula (larguras nativas diferem)
+                const float x = left + col * cellW + (16.0f - region.w) * 0.5f * scale;
+                const float y = top + row * cellH;
+                forgesprite::drawSprite(region, x, y, scale, tint);
+            }
+        }
+
+        // jogador ao centro, embaixo
+        const forgesprite::SpriteRegion& player = forgesprite::sprites::kPlayer;
+        const float                      playerY = height - 130.0f;
+        forgesprite::drawSprite(player, (width - player.w * scale) * 0.5f, playerY, scale, forgeui::color::kSuccess);
+
+        // tiros fake subindo (posicao = funcao do tempo, com wrap)
+        const float shotTravel = playerY - (top + rows * cellH);
+        for (uint32_t i = 0; i < 3; ++i)
+        {
+            const float shotX = width * (0.35f + 0.15f * i);
+            const float shotY = playerY - fmodf(time * 260.0f + i * 170.0f, shotTravel);
+            forgesprite::drawSprite(forgesprite::sprites::kShot, shotX, shotY, scale, forgeui::color::kText);
+        }
+
+        // texto por cima (forca o flush do lote de sprites)
+        forgeui::drawTextCentered("HORDA — SPRITE BATCHER", height * 0.06f, 40.0f, forgeui::color::kTitle);
+
+        const forgesprite::Stats stats = forgesprite::lastFrameStats();
+        char status[160];
+        snprintf(status, sizeof(status), "sprites: %u  |  draw calls: %u  |  tempo: %.1fs  |  updates: %llu", stats.sprites,
+                 stats.drawCalls, m_elapsed, (unsigned long long)m_updates);
+        forgeui::drawTextCentered(status, height * 0.06f + 56.0f, 22.0f, forgeui::color::kValue);
+
+        forgeui::drawHints("horda em 1 draw call — ENTER -> Cena B  |  ESC -> sair");
+    }
+
+    void onExit() override { LOGF(eINFO, "[cengine] onExit: HORDA (%.1fs, %llu updates)", m_elapsed, (unsigned long long)m_updates); }
 };
 
 /// Cena do estado de saida: nunca chega a desenhar — o frame() devolve false
@@ -227,40 +289,9 @@ public:
         INIT_RS_DESC(rootDesc, "default.rootsig", "compute.rootsig");
         initRootSignature(pRenderer, &rootDesc);
 
-        // vertex buffer do quad (estatico; o conteudo e preenchido no Load,
-        // quando as dimensoes da tela sao conhecidas)
-        BufferLoadDesc quadVbDesc = {};
-        quadVbDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
-        quadVbDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
-        quadVbDesc.mDesc.mSize = sizeof(QuadVertex) * gQuadVertexCount;
-        quadVbDesc.pData = NULL;
-        quadVbDesc.ppBuffer = &pQuadVertexBuffer;
-        addResource(&quadVbDesc, NULL);
-
-        // degrau 2: textura do sprite (invader.dds gerado por
-        // tools/make-invader-dds.ps1; resolvida via RD_TEXTURES do
-        // PathStatement.txt) + sampler point/nearest (pixel art: texel
-        // exato, sem filtragem borrando as bordas) + vertex buffer proprio.
-        TextureLoadDesc spriteTexDesc = {};
-        spriteTexDesc.pFileName = "invader.dds";
-        spriteTexDesc.ppTexture = &pSpriteTexture;
-        addResource(&spriteTexDesc, NULL);
-
-        SamplerDesc samplerDesc = { FILTER_NEAREST,
-                                    FILTER_NEAREST,
-                                    MIPMAP_MODE_NEAREST,
-                                    ADDRESS_MODE_CLAMP_TO_EDGE,
-                                    ADDRESS_MODE_CLAMP_TO_EDGE,
-                                    ADDRESS_MODE_CLAMP_TO_EDGE };
-        addSampler(pRenderer, &samplerDesc, &pSpriteSampler);
-
-        BufferLoadDesc spriteVbDesc = {};
-        spriteVbDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
-        spriteVbDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
-        spriteVbDesc.mDesc.mSize = sizeof(SpriteVertex) * gSpriteVertexCount;
-        spriteVbDesc.pData = NULL;
-        spriteVbDesc.ppBuffer = &pSpriteVertexBuffer;
-        addResource(&spriteVbDesc, NULL);
+        // degrau 3: o batcher cria atlas + sampler + vertex buffer dinamico
+        // (um trecho por frame in flight)
+        forgesprite::init(pRenderer, gDataBufferCount);
 
         // fontes (mesma fonte dos unit tests; resolvida via PathStatement.txt)
         FontDesc font = {};
@@ -282,10 +313,9 @@ public:
         // As factories rodam so no primeiro getScene de cada estado — gRouter
         // ja esta atribuido nesse ponto.
         auto sceneRepository = std::make_unique<cengine::routing::SceneRepository>();
-        sceneRepository->registerFactory("scene_a",
-                                         [] { return std::make_unique<DemoScene>("CENA A", "scene_b", "Cena B", forgeui::color::kTitle); });
+        sceneRepository->registerFactory("scene_a", [] { return std::make_unique<HordeScene>(); });
         sceneRepository->registerFactory("scene_b",
-                                         [] { return std::make_unique<DemoScene>("CENA B", "scene_a", "Cena A", forgeui::color::kAccent); });
+                                         [] { return std::make_unique<DemoScene>("CENA B", "scene_a", "Horda", forgeui::color::kAccent); });
         sceneRepository->registerFactory(std::string(cengine::routing::kExitStateCode), [] { return std::make_unique<ExitScene>(); });
 
         gRouter = std::make_shared<cengine::routing::RouterInMemory>(
@@ -311,11 +341,7 @@ public:
 
         exitFontSystem();
 
-        removeResource(pQuadVertexBuffer);
-
-        removeResource(pSpriteVertexBuffer);
-        removeResource(pSpriteTexture);
-        removeSampler(pRenderer, pSpriteSampler);
+        forgesprite::exit();
 
         exitGpuCmdRing(pRenderer, &gGraphicsCmdRing);
         exitSemaphore(pRenderer, pImageAcquiredSemaphore);
@@ -332,38 +358,17 @@ public:
 
     bool Load(ReloadDesc* pReloadDesc)
     {
-        // Mesma particao de responsabilidades do 01_Transformations: shaders
-        // dependem so do FSL (reload de shader recompila), o pipeline depende
-        // do formato do swapchain, e o conteudo do vertex buffer depende das
-        // dimensoes da tela (projecao ortografica na CPU).
-        if (pReloadDesc->mType & RELOAD_TYPE_SHADER)
-        {
-            addQuadShader();
-            addSpriteShader();
-            addSpriteDescriptorSet();
-        }
-
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
         {
             if (!addSwapChain())
                 return false;
         }
 
-        if (pReloadDesc->mType & (RELOAD_TYPE_SHADER | RELOAD_TYPE_RENDERTARGET))
-        {
-            addQuadPipeline();
-            addSpritePipeline();
-        }
-
-        if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
-        {
-            updateQuadVertexBuffer();
-            updateSpriteVertexBuffer();
-        }
-
-        // Escreve textura+sampler no descriptor set (como o
-        // prepareDescriptorSets do 01_Transformations: sempre, apos os adds).
-        prepareSpriteDescriptorSet();
+        // O batcher particiona internamente como o 01_Transformations:
+        // shader/descriptor set no RELOAD_TYPE_SHADER, pipeline quando o
+        // formato do render target pode ter mudado.
+        forgesprite::load(pReloadDesc, pSwapChain->ppRenderTargets[0]->mFormat, pSwapChain->ppRenderTargets[0]->mSampleCount,
+                          pSwapChain->ppRenderTargets[0]->mSampleQuality);
 
         UserInterfaceLoadDesc uiLoad = {};
         uiLoad.mColorFormat = pSwapChain->ppRenderTargets[0]->mFormat;
@@ -389,22 +394,11 @@ public:
         unloadFontSystem(pReloadDesc->mType);
         unloadUserInterface(pReloadDesc->mType);
 
-        if (pReloadDesc->mType & (RELOAD_TYPE_SHADER | RELOAD_TYPE_RENDERTARGET))
-        {
-            removePipeline(pRenderer, pQuadPipeline);
-            removePipeline(pRenderer, pSpritePipeline);
-        }
+        forgesprite::unload(pReloadDesc);
 
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
         {
             removeSwapChain(pRenderer, pSwapChain);
-        }
-
-        if (pReloadDesc->mType & RELOAD_TYPE_SHADER)
-        {
-            removeShader(pRenderer, pQuadShader);
-            removeShader(pRenderer, pSpriteShader);
-            removeDescriptorSet(pRenderer, pDescriptorSetSprite);
         }
     }
 
@@ -454,27 +448,14 @@ public:
         cmdSetViewport(cmd, 0.0f, 0.0f, (float)pRenderTarget->mWidth, (float)pRenderTarget->mHeight, 0.0f, 1.0f);
         cmdSetScissor(cmd, 0, 0, pRenderTarget->mWidth, pRenderTarget->mHeight);
 
-        // degrau 1: o quad proprio desenha ANTES do texto, no mesmo render
-        // pass — o fontstash/UI vem por cima (ordem de draw = camadas em 2D).
-        const uint32_t quadStride = sizeof(QuadVertex);
-        cmdBindPipeline(cmd, pQuadPipeline);
-        cmdBindVertexBuffer(cmd, 1, &pQuadVertexBuffer, &quadStride, NULL);
-        cmdDraw(cmd, gQuadVertexCount, 0);
-
-        // degrau 2: o sprite texturizado por cima do gradiente — o alpha
-        // blending compoe as bordas transparentes sobre o quad e sobre o
-        // fundo escuro ao mesmo tempo (o sprite cavalga a borda do quad).
-        const uint32_t spriteStride = sizeof(SpriteVertex);
-        cmdBindPipeline(cmd, pSpritePipeline);
-        cmdBindDescriptorSet(cmd, 0, pDescriptorSetSprite);
-        cmdBindVertexBuffer(cmd, 1, &pSpriteVertexBuffer, &spriteStride, NULL);
-        cmdDraw(cmd, gSpriteVertexCount, 0);
-
-        // a cena atual desenha atraves do alvo publicado no forgeui; o
-        // frame() executa o quadro completo da cengine (fases + fixed
-        // timestep) e devolve false quando o jogo pediu saida.
+        // degrau 3: abre o lote do batcher (trecho do frame in flight) e
+        // publica o alvo nas duas pontes; a cena desenha durante o frame()
+        // (drawSprite acumula, drawText da flush no pendente) e o flush
+        // final apanha a cauda de sprites sem texto depois.
+        forgesprite::begin(cmd, (float)pRenderTarget->mWidth, (float)pRenderTarget->mHeight, gFrameIndex);
         forgeui::beginDraw(cmd, (float)pRenderTarget->mWidth, (float)pRenderTarget->mHeight, gFontID);
         const bool keepRunning = gEngine->frame(cengine::core::Seconds{ (double)gDt });
+        forgesprite::flush();
 
         cmdDrawUserInterface(cmd);
 
@@ -518,194 +499,6 @@ public:
     }
 
     const char* GetName() { return "SpaceInvadersForge"; }
-
-    void addQuadShader()
-    {
-        ShaderLoadDesc quadShader = {};
-        quadShader.mVert.pFileName = "quad.vert";
-        quadShader.mFrag.pFileName = "quad.frag";
-        addShader(pRenderer, &quadShader, &pQuadShader);
-    }
-
-    void addQuadPipeline()
-    {
-        VertexLayout vertexLayout = {};
-        vertexLayout.mBindingCount = 1;
-        vertexLayout.mBindings[0].mStride = sizeof(QuadVertex);
-        vertexLayout.mAttribCount = 2;
-        vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
-        vertexLayout.mAttribs[0].mFormat = TinyImageFormat_R32G32_SFLOAT;
-        vertexLayout.mAttribs[0].mBinding = 0;
-        vertexLayout.mAttribs[0].mLocation = 0;
-        vertexLayout.mAttribs[0].mOffset = 0;
-        vertexLayout.mAttribs[1].mSemantic = SEMANTIC_TEXCOORD0;
-        vertexLayout.mAttribs[1].mFormat = TinyImageFormat_R32G32B32A32_SFLOAT;
-        vertexLayout.mAttribs[1].mBinding = 0;
-        vertexLayout.mAttribs[1].mLocation = 1;
-        vertexLayout.mAttribs[1].mOffset = sizeof(float2);
-
-        RasterizerStateDesc rasterizerStateDesc = {};
-        rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
-
-        PipelineDesc desc = {};
-        desc.mType = PIPELINE_TYPE_GRAPHICS;
-        // Sem recursos proprios (nem cbuffer nem textura): so os static
-        // samplers do root signature default.
-        PIPELINE_LAYOUT_DESC(desc, NULL, NULL, NULL, NULL);
-        GraphicsPipelineDesc& pipelineSettings = desc.mGraphicsDesc;
-        pipelineSettings.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
-        pipelineSettings.mRenderTargetCount = 1;
-        pipelineSettings.pDepthState = NULL; // 2D: sem depth, ordem = ordem de draw
-        pipelineSettings.pColorFormats = &pSwapChain->ppRenderTargets[0]->mFormat;
-        pipelineSettings.mSampleCount = pSwapChain->ppRenderTargets[0]->mSampleCount;
-        pipelineSettings.mSampleQuality = pSwapChain->ppRenderTargets[0]->mSampleQuality;
-        pipelineSettings.pShaderProgram = pQuadShader;
-        pipelineSettings.pVertexLayout = &vertexLayout;
-        pipelineSettings.pRasterizerState = &rasterizerStateDesc;
-        addPipeline(pRenderer, &desc, &pQuadPipeline);
-    }
-
-    void addSpriteShader()
-    {
-        ShaderLoadDesc spriteShader = {};
-        spriteShader.mVert.pFileName = "sprite.vert";
-        spriteShader.mFrag.pFileName = "sprite.frag";
-        addShader(pRenderer, &spriteShader, &pSpriteShader);
-    }
-
-    void addSpriteDescriptorSet()
-    {
-        // 1 instancia do set Persistent (textura+sampler nao mudam por
-        // frame); o layout vem das macros do sprite.srt.h.
-        DescriptorSetDesc desc = SRT_SET_DESC(SpriteSrtData, Persistent, 1, 0);
-        addDescriptorSet(pRenderer, &desc, &pDescriptorSetSprite);
-    }
-
-    void prepareSpriteDescriptorSet()
-    {
-        DescriptorData params[2] = {};
-        params[0].mIndex = SRT_RES_IDX(SpriteSrtData, Persistent, gSpriteTexture);
-        params[0].ppTextures = &pSpriteTexture;
-        params[1].mIndex = SRT_RES_IDX(SpriteSrtData, Persistent, gSpriteSampler);
-        params[1].ppSamplers = &pSpriteSampler;
-        updateDescriptorSet(pRenderer, 0, pDescriptorSetSprite, TF_ARRAY_COUNT(params), params);
-    }
-
-    void addSpritePipeline()
-    {
-        VertexLayout vertexLayout = {};
-        vertexLayout.mBindingCount = 1;
-        vertexLayout.mBindings[0].mStride = sizeof(SpriteVertex);
-        vertexLayout.mAttribCount = 2;
-        vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
-        vertexLayout.mAttribs[0].mFormat = TinyImageFormat_R32G32_SFLOAT;
-        vertexLayout.mAttribs[0].mBinding = 0;
-        vertexLayout.mAttribs[0].mLocation = 0;
-        vertexLayout.mAttribs[0].mOffset = 0;
-        vertexLayout.mAttribs[1].mSemantic = SEMANTIC_TEXCOORD0;
-        vertexLayout.mAttribs[1].mFormat = TinyImageFormat_R32G32_SFLOAT;
-        vertexLayout.mAttribs[1].mBinding = 0;
-        vertexLayout.mAttribs[1].mLocation = 1;
-        vertexLayout.mAttribs[1].mOffset = sizeof(float2);
-
-        RasterizerStateDesc rasterizerStateDesc = {};
-        rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
-
-        // Alpha blending classico (straight alpha), a mesma receita do
-        // FontSystem/UI do The-Forge: out = src*a + dst*(1-a).
-        BlendStateDesc blendStateDesc = {};
-        blendStateDesc.mSrcFactors[0] = BC_SRC_ALPHA;
-        blendStateDesc.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
-        blendStateDesc.mSrcAlphaFactors[0] = BC_SRC_ALPHA;
-        blendStateDesc.mDstAlphaFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
-        blendStateDesc.mColorWriteMasks[0] = COLOR_MASK_ALL;
-        blendStateDesc.mRenderTargetMask = BLEND_STATE_TARGET_ALL;
-        blendStateDesc.mIndependentBlend = false;
-
-        PipelineDesc desc = {};
-        desc.mType = PIPELINE_TYPE_GRAPHICS;
-        // Diferente do quad: o set Persistent do SRT entra no primeiro slot
-        // do layout (e o cmdBindDescriptorSet no Draw casa com ele).
-        PIPELINE_LAYOUT_DESC(desc, SRT_LAYOUT_DESC(SpriteSrtData, Persistent), NULL, NULL, NULL);
-        GraphicsPipelineDesc& pipelineSettings = desc.mGraphicsDesc;
-        pipelineSettings.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
-        pipelineSettings.mRenderTargetCount = 1;
-        pipelineSettings.pDepthState = NULL;
-        pipelineSettings.pBlendState = &blendStateDesc;
-        pipelineSettings.pColorFormats = &pSwapChain->ppRenderTargets[0]->mFormat;
-        pipelineSettings.mSampleCount = pSwapChain->ppRenderTargets[0]->mSampleCount;
-        pipelineSettings.mSampleQuality = pSwapChain->ppRenderTargets[0]->mSampleQuality;
-        pipelineSettings.pShaderProgram = pSpriteShader;
-        pipelineSettings.pVertexLayout = &vertexLayout;
-        pipelineSettings.pRasterizerState = &rasterizerStateDesc;
-        addPipeline(pRenderer, &desc, &pSpritePipeline);
-    }
-
-    // O sprite (16x16 texels) desenhado a 10x — 160x160 px — cavalgando a
-    // borda superior do quad gradiente: metade sobre ele, metade sobre o
-    // fundo escuro, para o alpha ser julgado contra dois fundos de uma vez.
-    void updateSpriteVertexBuffer()
-    {
-        const float width = (float)mSettings.mWidth;
-        const float height = (float)mSettings.mHeight;
-
-        const float spriteW = 160.0f;
-        const float spriteH = 160.0f;
-        const float left = (width - spriteW) * 0.5f;
-        const float top = height * 0.55f - spriteH * 0.5f;
-
-        auto ndcX = [width](float px) { return px / width * 2.0f - 1.0f; };
-        auto ndcY = [height](float py) { return 1.0f - py / height * 2.0f; };
-
-        const float x0 = ndcX(left), x1 = ndcX(left + spriteW);
-        const float y0 = ndcY(top), y1 = ndcY(top + spriteH);
-
-        // UV 0..1 cobre a textura inteira; v=0 e o topo da imagem (DDS
-        // guarda as linhas de cima para baixo).
-        const SpriteVertex vertices[gSpriteVertexCount] = {
-            { { x0, y0 }, { 0.0f, 0.0f } }, { { x1, y0 }, { 1.0f, 0.0f } }, { { x1, y1 }, { 1.0f, 1.0f } },
-            { { x0, y0 }, { 0.0f, 0.0f } }, { { x1, y1 }, { 1.0f, 1.0f } }, { { x0, y1 }, { 0.0f, 1.0f } },
-        };
-
-        BufferUpdateDesc update = { pSpriteVertexBuffer };
-        beginUpdateResource(&update);
-        memcpy(update.pMappedData, vertices, sizeof(vertices));
-        endUpdateResource(&update);
-    }
-
-    // Preenche o quad em coordenadas de PIXEL e converte para NDC — a
-    // "projecao ortografica" do degrau 1, aplicada na CPU. O retangulo tem
-    // tamanho fixo em pixels, entao redimensionar a janela NAO o estica:
-    // prova visivel de que a conversao esta correta.
-    void updateQuadVertexBuffer()
-    {
-        const float width = (float)mSettings.mWidth;
-        const float height = (float)mSettings.mHeight;
-
-        const float quadW = 320.0f;
-        const float quadH = 180.0f;
-        const float left = (width - quadW) * 0.5f;
-        const float top = height * 0.55f;
-
-        auto ndcX = [width](float px) { return px / width * 2.0f - 1.0f; };
-        auto ndcY = [height](float py) { return 1.0f - py / height * 2.0f; };
-
-        const float x0 = ndcX(left), x1 = ndcX(left + quadW);
-        const float y0 = ndcY(top), y1 = ndcY(top + quadH);
-
-        const float4 cTop = { 1.0f, 0.70f, 0.0f, 1.0f };    // ambar (kAccent)
-        const float4 cBottom = { 0.0f, 0.70f, 1.0f, 1.0f }; // ciano (kTitle)
-
-        const QuadVertex vertices[gQuadVertexCount] = {
-            { { x0, y0 }, cTop },    { { x1, y0 }, cTop },    { { x1, y1 }, cBottom },
-            { { x0, y0 }, cTop },    { { x1, y1 }, cBottom }, { { x0, y1 }, cBottom },
-        };
-
-        BufferUpdateDesc update = { pQuadVertexBuffer };
-        beginUpdateResource(&update);
-        memcpy(update.pMappedData, vertices, sizeof(vertices));
-        endUpdateResource(&update);
-    }
 
     bool addSwapChain()
     {

@@ -1,7 +1,7 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11; degrau 2 ✅ em
-  2026-07-13)
+- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11; degraus 2 e 3 ✅
+  em 2026-07-13)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -118,17 +118,43 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
        acima do exe) — `pFileName` vai com extensão (`"invader.dds"`), como
        os samples fazem com `.tex`.
 
-3. **Sprite batcher + atlas** (risco: buffer dinâmico + sincronização GPU):
-   a peça central. Spritesheet única com todos os sprites do jogo; API
-   `drawSprite(região, x, y, escala, cor)` em modo imediato (as cenas
-   chamam, o batcher acumula); vertex buffer dinâmico preenchido por quadro
-   e **um draw call para tudo**. Risco escondido: frames in flight exigem um
-   buffer por frame do swapchain (ou ring buffer) — escrever no buffer que a
-   GPU ainda lê é o bug clássico deste degrau. Referência: o middleware de
-   fonte (`Common_3/Application/Fonts/`) já resolve isso.
-   - **Aceite:** grade 5×11 de invasores + jogador + tiros fake em 1 draw
-     call, movendo em bloco, 60 fps estáveis; contador de sprites/draw calls
-     na tela (via texto).
+3. **Sprite batcher + atlas** ✅ (2026-07-13): a peça central. Spritesheet
+   única com todos os sprites do jogo; API `drawSprite(região, x, y, escala,
+   cor)` em modo imediato (as cenas chamam, o batcher acumula); vertex
+   buffer dinâmico preenchido por quadro e **um draw call para tudo**.
+   - **Aceite:** ✅ grade 5×11 (lulas/caranguejos/polvos com tints
+     distintos) + jogador + 3 tiros fake em **1 draw call**, movendo em
+     bloco, ~60 fps (302 updates/5.0s), contador de sprites/draw calls na
+     tela — validado em 2026-07-13 com screenshots ("sprites: 59 | draw
+     calls: 1") e resize programático preservando tamanho de pixel, estado
+     e o único draw call. Log limpo, saída com exit code 0.
+   - **Entregas:** `ForgeSpriteUi.h/.cpp` (a ponte-irmã do ForgeUi),
+     `tools/make-atlas-dds.ps1` + `assets/textures/atlas.dds` (64×32,
+     células 16×16, sprites BRANCOS — o tint por vértice é a cor, como
+     overlay de arcade; 2 frames por invasor já prontos para o degrau 4).
+     Os caminhos inline dos degraus 1–2 foram absorvidos pelo batcher
+     (quad.fsl removidos; o git guarda as versões didáticas).
+   - **Aprendizados:**
+     - O risco central (escrever no buffer que a GPU lê) resolvido com a
+       receita do UI middleware: UM buffer `CPU_TO_GPU` +
+       `BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT` com um trecho por frame in
+       flight; a fence do cmd ring já garante que o trecho do frame N foi
+       consumido há `gDataBufferCount` quadros — nenhuma sincronização
+       extra.
+     - Vértice de 20 bytes: pos float2 (NDC na CPU) + uv float2 + cor
+       `R8G8B8A8_UNORM` (uint32 ABGR == bytes R,G,B,A little-endian — os
+       mesmos valores do `forgeui::color` servem de tint direto); o input
+       assembler entrega float4 0..1 ao shader via semântica TEXCOORD1.
+     - Camadas 2D atravessando as pontes: `forgeui::drawText` dá flush no
+       lote pendente antes de gravar texto → "sprites primeiro, texto
+       depois" na cena produz texto por cima, com 1 flush por lote contíguo
+       (o casco dá o flush final após o `frame()` para a cauda sem texto).
+     - Contadores expostos são do quadro ANTERIOR (fechados no `begin()`
+       seguinte) — o texto desenha no meio do quadro corrente e mostraria
+       um lote incompleto.
+     - O `LNK1103` (intermediário LTCG corrompido) reincide a cada
+       rebuild incremental — limpar `out/.../Intermediate/SpaceInvadersForge`
+       é a cura; investigar `/LTCG:INCREMENTAL` se virar rotina.
 
 4. **Animação + tempo** (risco: dt e timestep): animação de 2 frames por
    troca de região de UV com timer; horda marchando com aceleração conforme
