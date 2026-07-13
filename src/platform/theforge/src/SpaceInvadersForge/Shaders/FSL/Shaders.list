@@ -13,3 +13,11 @@
 #frag quad.frag
 #include "quad.frag.fsl"
 #end
+
+#vert sprite.vert
+#include "sprite.vert.fsl"
+#end
+
+#frag sprite.frag
+#include "sprite.frag.fsl"
+#end

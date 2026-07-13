@@ -1,0 +1,19 @@
+// Degrau 2 da PoC sprites: pixel shader do quad texturizado - amostra a
+// textura com o sampler point/nearest (pixel art) e devolve RGBA direto;
+// o alpha do texel alimenta o blend SRC_ALPHA/ONE_MINUS_SRC_ALPHA do
+// pipeline (transparencia de verdade, nao discard).
+
+#include "sprite.srt.h"
+
+STRUCT(VSOutput)
+{
+    DATA(float4, Position, SV_Position);
+    DATA(float2, UV, TEXCOORD0);
+};
+
+ROOT_SIGNATURE(DefaultRootSignature)
+float4 PS_MAIN(VSOutput In)
+{
+    INIT_MAIN;
+    RETURN(SampleTex2D(gSpriteTexture, gSpriteSampler, In.UV));
+}

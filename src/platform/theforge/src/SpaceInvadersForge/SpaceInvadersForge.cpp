@@ -1,6 +1,8 @@
-// SpaceInvadersForge — degraus 0 e 1 da PoC sprites (.ai/task/01-poc-sprites.md):
-// o casco da plataforma The-Forge (degrau 0) + o primeiro quad proprio via
-// shader FSL, pipeline e vertex buffer (degrau 1).
+// SpaceInvadersForge — degraus 0 a 2 da PoC sprites (.ai/task/01-poc-sprites.md):
+// o casco da plataforma The-Forge (degrau 0), o primeiro quad proprio via
+// shader FSL, pipeline e vertex buffer (degrau 1) e o quad texturizado com
+// alpha blending — textura via IResourceLoader, sampler point e descriptor
+// set via SRT (degrau 2).
 //
 // Mesma receita do 8PuzzleForge.cpp: o IApp hospeda o EngineManager da
 // cengine em MODO HOSPEDADO (cengine 0.4.0, task 15) — sem window manager
@@ -44,6 +46,9 @@
 
 // fsl (INIT_RS_DESC)
 #include "Common_3/Graphics/FSL/defaults.h"
+// SRT do sprite — o MESMO header que os .fsl incluem; aqui as macros expandem
+// para os indices que SRT_SET_DESC/SRT_LAYOUT_DESC/SRT_RES_IDX consomem.
+#include "Shaders/FSL/sprite.srt.h"
 
 #include "Common_3/Utilities/Interfaces/IMemory.h" // deve ser o ultimo include
 
@@ -75,6 +80,23 @@ struct QuadVertex
     float4 color;
 };
 const uint32_t gQuadVertexCount = 6;
+
+// --- degrau 2: quad texturizado com alpha (textura + sampler + descriptor set) ---
+
+Texture*       pSpriteTexture = NULL;
+Sampler*       pSpriteSampler = NULL;
+Shader*        pSpriteShader = NULL;
+Pipeline*      pSpritePipeline = NULL;
+Buffer*        pSpriteVertexBuffer = NULL;
+DescriptorSet* pDescriptorSetSprite = NULL;
+
+// Vertice do sprite: a cor sai, o UV entra — quem colore agora e a textura.
+struct SpriteVertex
+{
+    float2 position;
+    float2 uv;
+};
+const uint32_t gSpriteVertexCount = 6;
 
 std::shared_ptr<cengine::routing::RouterInMemory> gRouter;
 std::unique_ptr<cengine::core::EngineManager>     gEngine;
@@ -150,7 +172,7 @@ public:
         snprintf(nav, sizeof(nav), "ENTER -> %s   |   ESC -> sair", m_nextLabel);
         forgeui::drawTextCentered(nav, height * 0.26f + 136.0f, 22.0f, forgeui::color::kDim);
 
-        forgeui::drawHints("quad proprio (FSL) sob o texto fontstash — degrau 1 da PoC sprites");
+        forgeui::drawHints("sprite texturizado com alpha sobre o quad gradiente — degrau 2 da PoC sprites");
     }
 
     void onExit() override { LOGF(eINFO, "[cengine] onExit: %s (%.1fs, %llu updates)", m_label, m_elapsed, (unsigned long long)m_updates); }
@@ -215,6 +237,31 @@ public:
         quadVbDesc.ppBuffer = &pQuadVertexBuffer;
         addResource(&quadVbDesc, NULL);
 
+        // degrau 2: textura do sprite (invader.dds gerado por
+        // tools/make-invader-dds.ps1; resolvida via RD_TEXTURES do
+        // PathStatement.txt) + sampler point/nearest (pixel art: texel
+        // exato, sem filtragem borrando as bordas) + vertex buffer proprio.
+        TextureLoadDesc spriteTexDesc = {};
+        spriteTexDesc.pFileName = "invader.dds";
+        spriteTexDesc.ppTexture = &pSpriteTexture;
+        addResource(&spriteTexDesc, NULL);
+
+        SamplerDesc samplerDesc = { FILTER_NEAREST,
+                                    FILTER_NEAREST,
+                                    MIPMAP_MODE_NEAREST,
+                                    ADDRESS_MODE_CLAMP_TO_EDGE,
+                                    ADDRESS_MODE_CLAMP_TO_EDGE,
+                                    ADDRESS_MODE_CLAMP_TO_EDGE };
+        addSampler(pRenderer, &samplerDesc, &pSpriteSampler);
+
+        BufferLoadDesc spriteVbDesc = {};
+        spriteVbDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+        spriteVbDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
+        spriteVbDesc.mDesc.mSize = sizeof(SpriteVertex) * gSpriteVertexCount;
+        spriteVbDesc.pData = NULL;
+        spriteVbDesc.ppBuffer = &pSpriteVertexBuffer;
+        addResource(&spriteVbDesc, NULL);
+
         // fontes (mesma fonte dos unit tests; resolvida via PathStatement.txt)
         FontDesc font = {};
         font.pFontPath = "TitilliumText/TitilliumText-Bold.otf";
@@ -266,6 +313,10 @@ public:
 
         removeResource(pQuadVertexBuffer);
 
+        removeResource(pSpriteVertexBuffer);
+        removeResource(pSpriteTexture);
+        removeSampler(pRenderer, pSpriteSampler);
+
         exitGpuCmdRing(pRenderer, &gGraphicsCmdRing);
         exitSemaphore(pRenderer, pImageAcquiredSemaphore);
 
@@ -288,6 +339,8 @@ public:
         if (pReloadDesc->mType & RELOAD_TYPE_SHADER)
         {
             addQuadShader();
+            addSpriteShader();
+            addSpriteDescriptorSet();
         }
 
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
@@ -299,12 +352,18 @@ public:
         if (pReloadDesc->mType & (RELOAD_TYPE_SHADER | RELOAD_TYPE_RENDERTARGET))
         {
             addQuadPipeline();
+            addSpritePipeline();
         }
 
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
         {
             updateQuadVertexBuffer();
+            updateSpriteVertexBuffer();
         }
+
+        // Escreve textura+sampler no descriptor set (como o
+        // prepareDescriptorSets do 01_Transformations: sempre, apos os adds).
+        prepareSpriteDescriptorSet();
 
         UserInterfaceLoadDesc uiLoad = {};
         uiLoad.mColorFormat = pSwapChain->ppRenderTargets[0]->mFormat;
@@ -333,6 +392,7 @@ public:
         if (pReloadDesc->mType & (RELOAD_TYPE_SHADER | RELOAD_TYPE_RENDERTARGET))
         {
             removePipeline(pRenderer, pQuadPipeline);
+            removePipeline(pRenderer, pSpritePipeline);
         }
 
         if (pReloadDesc->mType & (RELOAD_TYPE_RESIZE | RELOAD_TYPE_RENDERTARGET))
@@ -343,6 +403,8 @@ public:
         if (pReloadDesc->mType & RELOAD_TYPE_SHADER)
         {
             removeShader(pRenderer, pQuadShader);
+            removeShader(pRenderer, pSpriteShader);
+            removeDescriptorSet(pRenderer, pDescriptorSetSprite);
         }
     }
 
@@ -398,6 +460,15 @@ public:
         cmdBindPipeline(cmd, pQuadPipeline);
         cmdBindVertexBuffer(cmd, 1, &pQuadVertexBuffer, &quadStride, NULL);
         cmdDraw(cmd, gQuadVertexCount, 0);
+
+        // degrau 2: o sprite texturizado por cima do gradiente — o alpha
+        // blending compoe as bordas transparentes sobre o quad e sobre o
+        // fundo escuro ao mesmo tempo (o sprite cavalga a borda do quad).
+        const uint32_t spriteStride = sizeof(SpriteVertex);
+        cmdBindPipeline(cmd, pSpritePipeline);
+        cmdBindDescriptorSet(cmd, 0, pDescriptorSetSprite);
+        cmdBindVertexBuffer(cmd, 1, &pSpriteVertexBuffer, &spriteStride, NULL);
+        cmdDraw(cmd, gSpriteVertexCount, 0);
 
         // a cena atual desenha atraves do alvo publicado no forgeui; o
         // frame() executa o quadro completo da cengine (fases + fixed
@@ -492,6 +563,114 @@ public:
         pipelineSettings.pVertexLayout = &vertexLayout;
         pipelineSettings.pRasterizerState = &rasterizerStateDesc;
         addPipeline(pRenderer, &desc, &pQuadPipeline);
+    }
+
+    void addSpriteShader()
+    {
+        ShaderLoadDesc spriteShader = {};
+        spriteShader.mVert.pFileName = "sprite.vert";
+        spriteShader.mFrag.pFileName = "sprite.frag";
+        addShader(pRenderer, &spriteShader, &pSpriteShader);
+    }
+
+    void addSpriteDescriptorSet()
+    {
+        // 1 instancia do set Persistent (textura+sampler nao mudam por
+        // frame); o layout vem das macros do sprite.srt.h.
+        DescriptorSetDesc desc = SRT_SET_DESC(SpriteSrtData, Persistent, 1, 0);
+        addDescriptorSet(pRenderer, &desc, &pDescriptorSetSprite);
+    }
+
+    void prepareSpriteDescriptorSet()
+    {
+        DescriptorData params[2] = {};
+        params[0].mIndex = SRT_RES_IDX(SpriteSrtData, Persistent, gSpriteTexture);
+        params[0].ppTextures = &pSpriteTexture;
+        params[1].mIndex = SRT_RES_IDX(SpriteSrtData, Persistent, gSpriteSampler);
+        params[1].ppSamplers = &pSpriteSampler;
+        updateDescriptorSet(pRenderer, 0, pDescriptorSetSprite, TF_ARRAY_COUNT(params), params);
+    }
+
+    void addSpritePipeline()
+    {
+        VertexLayout vertexLayout = {};
+        vertexLayout.mBindingCount = 1;
+        vertexLayout.mBindings[0].mStride = sizeof(SpriteVertex);
+        vertexLayout.mAttribCount = 2;
+        vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
+        vertexLayout.mAttribs[0].mFormat = TinyImageFormat_R32G32_SFLOAT;
+        vertexLayout.mAttribs[0].mBinding = 0;
+        vertexLayout.mAttribs[0].mLocation = 0;
+        vertexLayout.mAttribs[0].mOffset = 0;
+        vertexLayout.mAttribs[1].mSemantic = SEMANTIC_TEXCOORD0;
+        vertexLayout.mAttribs[1].mFormat = TinyImageFormat_R32G32_SFLOAT;
+        vertexLayout.mAttribs[1].mBinding = 0;
+        vertexLayout.mAttribs[1].mLocation = 1;
+        vertexLayout.mAttribs[1].mOffset = sizeof(float2);
+
+        RasterizerStateDesc rasterizerStateDesc = {};
+        rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
+
+        // Alpha blending classico (straight alpha), a mesma receita do
+        // FontSystem/UI do The-Forge: out = src*a + dst*(1-a).
+        BlendStateDesc blendStateDesc = {};
+        blendStateDesc.mSrcFactors[0] = BC_SRC_ALPHA;
+        blendStateDesc.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
+        blendStateDesc.mSrcAlphaFactors[0] = BC_SRC_ALPHA;
+        blendStateDesc.mDstAlphaFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
+        blendStateDesc.mColorWriteMasks[0] = COLOR_MASK_ALL;
+        blendStateDesc.mRenderTargetMask = BLEND_STATE_TARGET_ALL;
+        blendStateDesc.mIndependentBlend = false;
+
+        PipelineDesc desc = {};
+        desc.mType = PIPELINE_TYPE_GRAPHICS;
+        // Diferente do quad: o set Persistent do SRT entra no primeiro slot
+        // do layout (e o cmdBindDescriptorSet no Draw casa com ele).
+        PIPELINE_LAYOUT_DESC(desc, SRT_LAYOUT_DESC(SpriteSrtData, Persistent), NULL, NULL, NULL);
+        GraphicsPipelineDesc& pipelineSettings = desc.mGraphicsDesc;
+        pipelineSettings.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
+        pipelineSettings.mRenderTargetCount = 1;
+        pipelineSettings.pDepthState = NULL;
+        pipelineSettings.pBlendState = &blendStateDesc;
+        pipelineSettings.pColorFormats = &pSwapChain->ppRenderTargets[0]->mFormat;
+        pipelineSettings.mSampleCount = pSwapChain->ppRenderTargets[0]->mSampleCount;
+        pipelineSettings.mSampleQuality = pSwapChain->ppRenderTargets[0]->mSampleQuality;
+        pipelineSettings.pShaderProgram = pSpriteShader;
+        pipelineSettings.pVertexLayout = &vertexLayout;
+        pipelineSettings.pRasterizerState = &rasterizerStateDesc;
+        addPipeline(pRenderer, &desc, &pSpritePipeline);
+    }
+
+    // O sprite (16x16 texels) desenhado a 10x — 160x160 px — cavalgando a
+    // borda superior do quad gradiente: metade sobre ele, metade sobre o
+    // fundo escuro, para o alpha ser julgado contra dois fundos de uma vez.
+    void updateSpriteVertexBuffer()
+    {
+        const float width = (float)mSettings.mWidth;
+        const float height = (float)mSettings.mHeight;
+
+        const float spriteW = 160.0f;
+        const float spriteH = 160.0f;
+        const float left = (width - spriteW) * 0.5f;
+        const float top = height * 0.55f - spriteH * 0.5f;
+
+        auto ndcX = [width](float px) { return px / width * 2.0f - 1.0f; };
+        auto ndcY = [height](float py) { return 1.0f - py / height * 2.0f; };
+
+        const float x0 = ndcX(left), x1 = ndcX(left + spriteW);
+        const float y0 = ndcY(top), y1 = ndcY(top + spriteH);
+
+        // UV 0..1 cobre a textura inteira; v=0 e o topo da imagem (DDS
+        // guarda as linhas de cima para baixo).
+        const SpriteVertex vertices[gSpriteVertexCount] = {
+            { { x0, y0 }, { 0.0f, 0.0f } }, { { x1, y0 }, { 1.0f, 0.0f } }, { { x1, y1 }, { 1.0f, 1.0f } },
+            { { x0, y0 }, { 0.0f, 0.0f } }, { { x1, y1 }, { 1.0f, 1.0f } }, { { x0, y1 }, { 0.0f, 1.0f } },
+        };
+
+        BufferUpdateDesc update = { pSpriteVertexBuffer };
+        beginUpdateResource(&update);
+        memcpy(update.pMappedData, vertices, sizeof(vertices));
+        endUpdateResource(&update);
     }
 
     // Preenche o quad em coordenadas de PIXEL e converte para NDC — a

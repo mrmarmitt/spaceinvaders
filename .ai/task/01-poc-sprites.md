@@ -1,6 +1,7 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11)
+- **Status:** in-progress (degraus 0 e 1 ✅ em 2026-07-11; degrau 2 ✅ em
+  2026-07-13)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -84,13 +85,38 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
      Load/Unload segue o `01_Transformations` (shader ← FSL, pipeline ←
      formato do swapchain, conteúdo do VB ← dimensões da tela).
 
-2. **Quad texturizado com alpha** (risco: IResourceLoader + tooling de
-   assets): carregar textura via `addResource(TextureLoadDesc)`, sampler
-   point/nearest (pixel art), descriptor set, alpha blending. Inclui o
-   tooling: converter PNG → `.dds`/`.ktx` (`The-Forge/Tools/`) e montar o
-   mount de texturas no `PathStatement.txt`.
-   - **Aceite:** um sprite com transparência sobre fundo colorido, bordas
-     limpas (sem franja de alpha).
+2. **Quad texturizado com alpha** ✅ (2026-07-13): carregar textura via
+   `addResource(TextureLoadDesc)`, sampler point/nearest (pixel art),
+   descriptor set, alpha blending. Inclui o tooling: gerar o `.dds` e montar
+   o mount de texturas no `PathStatement.txt`.
+   - **Aceite:** ✅ um sprite com transparência sobre fundo colorido, bordas
+     limpas (sem franja de alpha) — validado em 2026-07-13 com screenshots:
+     invasor 16×16 desenhado a 10x cavalgando a borda do quad gradiente (o
+     alpha compõe contra o gradiente E contra o fundo escuro no mesmo draw),
+     bordas de pixel nítidas (sampler nearest), resize programático
+     1680×720 → 1084×841 preservando os 160×160 px do sprite e o estado da
+     cena; log sem erros e saída limpa (exit code 0).
+   - **Aprendizados:**
+     - A v1.63 NÃO traz conversor de imagem em `The-Forge/Tools/` (os
+       `.tex` de `Art/Textures/dds` são DDS renomeados). O tooling virou
+       nosso: `tools/make-invader-dds.ps1` gera DDS RGBA8 **sem compressão**
+       com header DX10, que o tinydds do ResourceLoader lê direto — para
+       pixel art é o formato certo (texel exato, sem blocos BC).
+     - O SRT de verdade: um único `sprite.srt.h`
+       (`BEGIN_SRT_NO_AB`/`DECL_TEXTURE`/`DECL_SAMPLER`) incluído pelos
+       `.fsl` E pelo C++ (após `defaults.h`) — as macros
+       `SRT_SET_DESC`/`SRT_LAYOUT_DESC`/`SRT_RES_IDX` derivam dele, mantendo
+       shader e descriptor set em acordo por construção.
+     - Ciclo do descriptor set espelha o `01_Transformations`: add/remove
+       junto com o shader (`RELOAD_TYPE_SHADER`), `updateDescriptorSet` a
+       cada Load (após os adds), `cmdBindDescriptorSet(cmd, 0, ...)` casando
+       com o set no primeiro slot do `PIPELINE_LAYOUT_DESC`.
+     - Alpha blending é a receita do FontSystem/UI: `BC_SRC_ALPHA` /
+       `BC_ONE_MINUS_SRC_ALPHA` (cor e alpha), sem depth — em 2D a ordem de
+       draw é a ordem das camadas (gradiente → sprite → texto).
+     - `RD_TEXTURES` remontado para `assets/textures/` do repo (5 níveis
+       acima do exe) — `pFileName` vai com extensão (`"invader.dds"`), como
+       os samples fazem com `.tex`.
 
 3. **Sprite batcher + atlas** (risco: buffer dinâmico + sincronização GPU):
    a peça central. Spritesheet única com todos os sprites do jogo; API
