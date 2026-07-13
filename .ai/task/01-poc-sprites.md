@@ -166,9 +166,10 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
      e vsync ON **592 draws** (60 fps), e nas duas: updates = 60Hz
      cravados, **passos: 16** iguais, posição e pose da horda idênticas.
      Os contadores `updates (passo fixo 60Hz)` vs `draws (taxa de render)`
-     ficam na tela expondo a separação. A morte por tecla (K) não foi
-     exercitada pela validação automatizada (injeção de tecla é bloqueada
-     pelo Windows) — checar manualmente que a marcha acelera.
+     ficam na tela expondo a separação. A morte por tecla (K) foi validada
+     manualmente em 2026-07-13: a marcha acelera conforme os invasores
+     morrem (a injeção de tecla é bloqueada pelo Windows, então essa parte
+     é sempre checagem manual).
    - **VEREDITO DO TIMESTEP (alimenta a task 15 da cengine):** o
      `frame(dt)` hospedado da cengine 0.4.0 **resolve o problema por
      inteiro** — o acumulador interno de passo fixo (1/60s) entrega
