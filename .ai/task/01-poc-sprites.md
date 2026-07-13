@@ -1,7 +1,8 @@
 # 01 — PoC sprites: Space Invaders no The-Forge
 
-- **Status:** done (degraus 0 e 1 ✅ em 2026-07-11; degraus 2 a 5 ✅ em
-  2026-07-13 — resta só a partida manual de ponta a ponta do jogador)
+- **Status:** done ✅ (degraus 0 e 1 em 2026-07-11; degraus 2 a 5 em
+  2026-07-13; partida manual de ponta a ponta validada pelo jogador em
+  2026-07-13 — PoC encerrada)
 - **Prioridade:** exploratória (aprendizado de renderização — continuação da
   trilha iniciada na task 01 do 8puzzle)
 - **Categoria:** Plataforma
@@ -197,9 +198,8 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
      pontos/onda, vidas como mini-canhões), transição real
      jogo → game over por bombas (tela FIM DE JOGO + entrada de nome de
      recorde) e splash com a tabela de pontos clássica animada. A partida
-     jogada de ponta a ponta (mover/atirar/onda completa/recorde nomeado)
-     fica para a checagem manual do jogador — injeção de tecla segue
-     bloqueada pelo Windows.
+     de ponta a ponta (mover/atirar/onda completa/recorde nomeado) foi
+     validada manualmente pelo jogador em 2026-07-13: **funcionou tudo**.
    - **Aprendizados:**
      - Arena virtual de **224×256 (a resolução interna do arcade)** no
        domínio: os sprites do atlas ficam 1:1 com as unidades do mundo, e a
@@ -234,8 +234,8 @@ um renderizador 2D genérico, reutilizável pelo próximo jogo.
 
 ## Critérios de aceite
 
-- [x] Degraus 0–5 validados (aceites individuais acima; falta só a partida
-      manual de ponta a ponta do jogador).
+- [x] Degraus 0–5 validados (aceites individuais acima, incluindo a partida
+      manual de ponta a ponta em 2026-07-13).
 - [x] Registro do aprendizado (seção acima): o que o batcher exigiu da
       plataforma, o que o `ForgeSpriteUi` precisa expor para ser
       reutilizável pelo próximo jogo, e o veredito sobre timestep — alimenta

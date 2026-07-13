@@ -9,7 +9,7 @@ um arquivo por task, com contexto, degraus e critérios de aceite. Status:
 
 | # | Task | Status | Categoria |
 |---|------|--------|-----------|
-| 01 | [PoC sprites — Space Invaders no The-Forge](01-poc-sprites.md) | in-progress | Plataforma |
+| 01 | [PoC sprites — Space Invaders no The-Forge](01-poc-sprites.md) | done | Plataforma |
 
 ## Contexto do projeto
 
