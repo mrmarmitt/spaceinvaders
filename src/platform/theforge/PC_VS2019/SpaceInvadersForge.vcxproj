@@ -25,7 +25,8 @@
   </ItemGroup>
   <ItemGroup>
     <!-- app + plataforma theforge -->
-    <ClCompile Include="..\src\SpaceInvadersForge\main.cpp" />
+    <!-- entry point + composition root (na raiz de src, como no 8puzzle) -->
+    <ClCompile Include="$(GameRoot)src\main_theforge.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\SpaceInvadersForge.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeUi.cpp" />
     <ClCompile Include="..\src\SpaceInvadersForge\ForgeSpriteUi.cpp" />

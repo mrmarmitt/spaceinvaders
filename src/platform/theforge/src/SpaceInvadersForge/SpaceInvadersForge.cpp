@@ -1,36 +1,28 @@
 // SpaceInvadersForge — implementacao do casco The-Forge (degrau 5 da PoC
-// sprites, .ai/task/01-poc-sprites.md). O entry point e a historia do boot
-// estao no main.cpp; a declaracao da classe, no SpaceInvadersForge.h.
+// sprites, .ai/task/01-poc-sprites.md). O entry point, a historia do boot e
+// a COMPOSICAO do jogo estao no src/main_theforge.cpp; a declaracao da
+// classe, no SpaceInvadersForge.h.
 //
-// Mesma fiacao do 8PuzzleForge.cpp: dominio (World/servicos/GameRouter/
-// maquina de estados) em C++ puro e testavel sem plataforma; o IApp hospeda
-// o EngineManager da cengine em MODO HOSPEDADO (0.4.0, task 15) — sem
-// window manager e sem start(); o host dirige o quadro:
+// O casco so conhece plataforma: subsistemas do The-Forge, as pontes
+// (forgeui/forgesprite) e o EngineManager da cengine em MODO HOSPEDADO
+// (0.4.0, task 15) — sem window manager e sem start(); o host dirige o
+// quadro:
 //
 //   Update(dt) -> forgeui::beginInput + guarda o dt
 //   Draw()     -> forgesprite::begin + forgeui::beginDraw + engine.frame(dt)
 //                 -> forgesprite::flush; false -> requestShutdown()
 //
-// As cenas ficam em scene/ e falam com a plataforma so atraves das pontes
-// forgeui (teclado + texto) e forgesprite (batcher de sprites, degrau 3).
-// Recordes persistem em records.tsv relativo ao diretorio do exe.
+// Dominio, servicos e cenas chegam prontos via composeSpaceInvadersGame()
+// (GameComposition.h) — este arquivo nao inclui nada do jogo.
 
-// cengine + jogo — C++ puro, ANTES dos headers do The-Forge (IMemory.h por ultimo).
+// cengine — C++ puro, ANTES dos headers do The-Forge (IMemory.h por ultimo).
 #include <cengine/core/EngineManager.hpp>
 #include <cengine/core/Time.hpp>
-#include <cengine/routing/GameManager.hpp>
 #include <cengine/routing/RouterInMemory.hpp>
-#include <cengine/routing/SceneRepository.hpp>
 
-#include "spaceinvaders/game/GameRouter.h"
-#include "spaceinvaders/game/service/PlaySession.h"
-#include "spaceinvaders/game/service/RecordService.h"
-#include "spaceinvaders/game/service/repository/FileRecordRepository.h"
-#include "spaceinvaders/game/state/StateGame.h"
-
-#include "ForgeSceneFactory.h"
 #include "ForgeSpriteUi.h"
 #include "ForgeUi.h"
+#include "GameComposition.h"
 #include "SpaceInvadersForge.h"
 
 #include <memory>
@@ -129,26 +121,11 @@ bool SpaceInvadersForge::Init()
 
     forgeui::initBindings();
 
-    // fiacao do jogo (mesmo desenho do 8PuzzleForge): repositorio de
-    // cenas -> router (estado inicial = splash) -> fachada de dominio
-    // -> servicos -> factories de cena -> engine hospedada
-    auto sceneRepository = std::make_unique<cengine::routing::SceneRepository>();
-    cengine::routing::ISceneRepository& sceneRepositoryRef = *sceneRepository;
-
-    gRouter = std::make_shared<cengine::routing::RouterInMemory>(std::move(sceneRepository), std::make_unique<InitialSG>());
-
-    const auto gameRouter = std::make_shared<GameRouter>(gRouter);
-    const auto session = std::make_shared<PlaySession>();
-    // recordes relativos ao diretorio de trabalho (o diretorio do exe)
-    const auto recordRepository = std::make_shared<FileRecordRepository>("records.tsv");
-    const auto recordService = std::make_shared<RecordService>(recordRepository);
-
-    ForgeSceneFactory::populateForgeScenes(sceneRepositoryRef, gameRouter, session, recordService);
-
-    // Modo hospedado: sem window manager (janela e do The-Forge) e sem
-    // start() — o Draw() dirige via frame(dt).
-    gEngine = std::make_unique<cengine::core::EngineManager>(
-        nullptr, std::make_unique<cengine::routing::GameManager>(gRouter));
+    // composicao do jogo (instancias e injecoes) no composition root —
+    // ver src/main_theforge.cpp
+    GameComposition game = composeSpaceInvadersGame();
+    gRouter = std::move(game.router);
+    gEngine = std::move(game.engine);
 
     waitForAllResourceLoads();
 

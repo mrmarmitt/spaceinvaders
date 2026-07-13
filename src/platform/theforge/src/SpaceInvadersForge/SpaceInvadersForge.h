@@ -2,8 +2,9 @@
 
 // O casco da plataforma The-Forge (modo hospedado — fase 1): implementa os
 // callbacks do IApp que o framework invoca. Quem chama cada metodo e o
-// WindowsBase.cpp do The-Forge, dono do main/loop real — ver main.cpp para
-// a historia completa do boot.
+// WindowsBase.cpp do The-Forge, dono do main/loop real — ver
+// src/main_theforge.cpp para a historia completa do boot e a composicao do
+// jogo.
 //
 // O estado do casco (renderer, swapchain, engine da cengine) vive como
 // globals no SpaceInvadersForge.cpp, no idioma dos samples do The-Forge.
