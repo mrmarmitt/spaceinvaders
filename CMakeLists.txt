@@ -23,7 +23,7 @@ include(FetchContent)
 
 FetchContent_Declare(
   cengine
-  GIT_REPOSITORY https://github.com/mrmarmitt/cengine.git
+  GIT_REPOSITORY https://github.com/cengine-dev/cengine.git
   GIT_TAG 0.5.0
 )
 

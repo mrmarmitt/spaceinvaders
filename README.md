@@ -1,8 +1,8 @@
 # Space Invaders
 
 Um Space Invaders completo e jogável, construído como a **segunda PoC da
-trilha de renderização**: onde o [8puzzle](https://github.com/mrmarmitt)
-provou que a [cengine](https://github.com/mrmarmitt/cengine) roda sobre o
+trilha de renderização**: onde o [8puzzle](https://github.com/cengine-dev/8puzzle)
+provou que a [cengine](https://github.com/cengine-dev/cengine) roda sobre o
 [The-Forge](https://github.com/ConfettiFX/The-Forge), este projeto prova a
 **renderização 2D de verdade** — shader FSL próprio, texturas com alpha,
 sprite batcher com atlas (a horda inteira em **1 draw call**), animação e
@@ -54,7 +54,7 @@ Pré-requisitos:
 
 - Visual Studio 2019 (toolset v142);
 - checkouts **irmãos** deste repo: [`The-Forge`](https://github.com/ConfettiFX/The-Forge)
-  v1.63 e [`cengine`](https://github.com/mrmarmitt/cengine) —
+  v1.63 e [`cengine`](https://github.com/cengine-dev/cengine) —
   o workspace fica `The-Forge/`, `cengine/` e `spaceinvaders/` lado a lado;
 - no The-Forge: rodar `PRE_BUILD.bat` (baixa os assets de arte) e buildar a
   solution `Examples_3/Unit_Tests/PC_VS2019` em **Release x64** (gera

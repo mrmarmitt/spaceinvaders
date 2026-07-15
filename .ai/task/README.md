@@ -1,7 +1,7 @@
 # Plano de trabalho — Space Invaders
 
 Tasks do projeto, no mesmo formato dos planos da
-[cengine](https://github.com/mrmarmitt/cengine) e do 8puzzle (`.ai/task/`):
+[cengine](https://github.com/cengine-dev/cengine) e do 8puzzle (`.ai/task/`):
 um arquivo por task, com contexto, degraus e critérios de aceite. Status:
 `todo` → `in-progress` → `done`.
 
